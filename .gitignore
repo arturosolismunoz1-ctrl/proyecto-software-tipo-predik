@@ -1,0 +1,45 @@
+# --- Secretos y configuración local (NUNCA se sube) ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# --- Python / Backend ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Node / Frontend ---
+node_modules/
+dist/
+build/
+.vite/
+
+# --- Bases de datos locales / volúmenes Docker ---
+*.sqlite3
+pgdata/
+infra/volumes/
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Sistema operativo / Editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- Prohibido explícitamente por convención del proyecto ---
+# No se permiten archivos sueltos tipo "final_v2_ahora_si.zip" en el repo.
+*final*.zip
+*definitivo*
+*copia*.zip
