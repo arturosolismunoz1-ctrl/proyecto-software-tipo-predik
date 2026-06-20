@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: geodata_predik_db_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: geodata_predik_clone
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: dev_password_local
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d geodata_predik_clone"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: geodata_predik_redis_dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata_dev:/data
+
+volumes:
+  pgdata_dev:
+  redisdata_dev:
