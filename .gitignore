@@ -4,6 +4,7 @@
 .env.*.local
 *.pem
 *.key
+*.cert
 
 # --- Python / Backend ---
 __pycache__/
@@ -16,17 +17,23 @@ env/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 
 # --- Node / Frontend ---
 node_modules/
 dist/
 build/
 .vite/
+*.local
 
 # --- Bases de datos locales / volúmenes Docker ---
 *.sqlite3
+*.db
 pgdata/
 infra/volumes/
+infra/pgdata/
+infra/redisdata/
 
 # --- Logs ---
 *.log
@@ -35,11 +42,11 @@ logs/
 # --- Sistema operativo / Editor ---
 .DS_Store
 Thumbs.db
+desktop.ini
 .vscode/
 .idea/
 
 # --- Prohibido explícitamente por convención del proyecto ---
-# No se permiten archivos sueltos tipo "final_v2_ahora_si.zip" en el repo.
 *final*.zip
 *definitivo*
 *copia*.zip
