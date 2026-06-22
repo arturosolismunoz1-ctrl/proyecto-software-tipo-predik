@@ -24,11 +24,33 @@ Registro cronológico de hitos completados, para tener trazabilidad de qué se h
   `feat: agrega docker-compose con PostgreSQL+PostGIS y Redis para ambiente de desarrollo`
 - **Pendiente de confirmar:** que el `git push` de esa rama haya llegado correctamente a GitHub (la rama no aparecía aún en el listado remoto — último paso en validación).
 
-## Próximos pasos planeados (no iniciados aún)
+## 2026-06-22
 
-- [ ] Confirmar push exitoso de `feature/docker-compose-dev` y abrir el primer Pull Request hacia `develop`
-- [ ] Modelos SQLAlchemy + primera migración Alembic (esquemas `core`, `raw_data`, `cube`, `analytics`)
-- [ ] Implementar `BaseConnector` (interfaz abstracta) y `GeoFeature` (modelo común)
-- [ ] Implementar `DenueConnector` (primera fuente de datos real: INEGI DENUE)
-- [ ] Endpoint `POST /api/v1/zona/concentracion-comercial`
-- [ ] Scaffolding inicial del frontend (React + Vite + Leaflet)
+### ✅ Implementación inicial del backend FastAPI commiteada a git
+- Modelos SQLAlchemy completos: `core`, `raw_data`, `cube`, `analytics`
+- Primera migración Alembic: esquemas + PostGIS + extensión H3
+- `BaseConnector` + `GeoFeature` (interfaz abstracta de conectores)
+- `DenueConnector` con fallback a datos demo (sin integración real a INEGI aún)
+- Registro centralizado de conectores (`registry.py`)
+- Endpoints implementados:
+  - `POST /api/v1/zona/concentracion-comercial`
+  - `GET /DELETE /api/v1/analisis` y `/api/v1/analisis/{id}`
+  - `GET /api/v1/admin/conectores` con health check y sync
+- Suite inicial de tests (`backend/tests/`)
+
+### ✅ Reorganización y limpieza del repositorio
+- Proyecto movido a carpeta limpia `predik-geo/` en el Desktop (eliminada estructura anidada incorrecta)
+- `.gitkeep` eliminados de todos los directorios que ya contienen código
+- `Makefile` creado en el root con comandos: `make dev`, `make run`, `make test`, `make migrate`, `make db-shell`, etc.
+- `README.md` actualizado con instrucciones completas de setup y uso
+- `PROMPT_CONTINUIDAD_VSCODE.md` actualizado con estado actual del código
+- `.gitignore` mejorado (cobertura, htmlcov, volúmenes Docker)
+
+## Próximos pasos (por orden de prioridad)
+
+- [ ] Confirmar push a GitHub y verificar ramas remotas (`git branch -a`)
+- [ ] Módulo densidad poblacional: endpoint `POST /api/v1/zona/densidad-poblacional` + lógica con datos AGEB/Censo INEGI
+- [ ] Autenticación JWT: `POST /api/v1/auth/login` y `/refresh` + middleware de autenticación
+- [ ] ETL para poblar cubos H3 con datos reales de INEGI DENUE
+- [ ] Integración real con API INEGI DENUE en `DenueConnector` (hoy usa datos demo)
+- [ ] Frontend: scaffolding React + Vite + Leaflet
