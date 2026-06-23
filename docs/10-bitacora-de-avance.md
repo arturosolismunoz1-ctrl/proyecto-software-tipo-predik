@@ -114,10 +114,23 @@ Registro cronológico de hitos completados, para tener trazabilidad de qué se h
 
 ---
 
+### ✅ Endpoint densidad poblacional
+
+- **`POST /api/v1/zona/densidad-poblacional`** — recibe un GeoJSON Polygon, hace JOIN PostGIS entre `ageb_geometries` y `ageb_demographics`, calcula:
+  - Población total, por género (masculino/femenino), por grupo de edad (0-14, 15-64, 65+)
+  - Densidad hab/km², viviendas habitadas, promedio de ocupantes
+  - Detalle por AGEB (cvegeo, área, densidad, geometría GeoJSON)
+- Guarda resultado en `analytics.zona_analysis_results` con `analysis_type="densidad_poblacional"`.
+- Protegido con JWT; devuelve 404 con código `ZONA_SIN_DATOS_DEMOGRAFICOS` si no hay AGEBs en el polígono.
+- 5 tests nuevos. **Total: 49/49 verdes.**
+
+### Commit de referencia
+- `b670e41` — `feat: implementa endpoint POST /api/v1/zona/densidad-poblacional`
+
+---
+
 ## Próximos pasos (por orden de prioridad)
 
-- [ ] **Endpoint densidad poblacional** — `POST /api/v1/zona/densidad-poblacional` que consulte `ageb_demographics` + `ageb_geometries` para calcular densidad en el polígono dado. Requiere cargar datos reales primero con los scripts anteriores.
-- [ ] **Frontend MVP** — scaffolding React + Vite, pantalla de login, mapa Leaflet, dibujar polígono, mostrar resultado de concentración.
-- [ ] **Proteger endpoints admin** — `/admin/conectores` actualmente sin autenticación; agregar `get_current_user` con validación de `role == "admin"`.
-- [ ] **`.env.example`** — documentar todas las variables de entorno requeridas (`DATABASE_URL`, `JWT_SECRET`, `INEGI_DENUE_API_URL`, `REDIS_URL`).
+- [ ] **Frontend MVP** — scaffolding React + Vite, pantalla de login, mapa Leaflet, dibujar polígono, mostrar resultado de concentración y densidad.
+- [ ] **`.env.example`** — documentar variables: `DATABASE_URL`, `JWT_SECRET`, `INEGI_DENUE_TOKEN`, `REDIS_URL`.
 - [ ] **CI/CD** — GitHub Actions que corra `make test` en cada PR.

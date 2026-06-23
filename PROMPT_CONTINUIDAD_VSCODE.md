@@ -33,7 +33,7 @@ Estoy construyendo un clon funcional de **GeoData Intelligence** (plataforma de 
 - Usuario de prueba en DB: `admin@predik.local` / `dev_password_admin` (creado con `make seed`)
 - **Makefile** en el root — ejecutar `make help` para ver todos los comandos.
 
-## ESTADO ACTUAL DEL CÓDIGO (al 2026-06-23, commit 7d2246e)
+## ESTADO ACTUAL DEL CÓDIGO (al 2026-06-23, commit b670e41)
 
 ### Ya implementado y commiteado en git:
 
@@ -56,6 +56,7 @@ Estoy construyendo un clon funcional de **GeoData Intelligence** (plataforma de 
 **Backend — API:**
 - `POST /api/v1/auth/login` y `POST /api/v1/auth/refresh` (JWT HS256, 30min/7días)
 - `POST /api/v1/zona/concentracion-comercial` (protegido JWT)
+- `POST /api/v1/zona/densidad-poblacional` (protegido JWT) — densidad hab/km², por género/edad, detalle AGEB
 - `GET/DELETE /api/v1/analisis` y `/analisis/{id}` (protegidos JWT)
 - `GET /api/v1/admin/conectores`, health, sync (requiere `role == admin`)
 - `POST /api/v1/admin/etl/{source}/run` (requiere `role == admin`)
@@ -65,17 +66,16 @@ Estoy construyendo un clon funcional de **GeoData Intelligence** (plataforma de 
 - `backend/scripts/load_marco_geoestadistico.py` — carga shapefile MGN → `ageb_geometries`
 - `backend/scripts/load_censo_2020.py` — carga CSV Censo 2020 → `ageb_demographics`
 
-**Tests — 44/44 verde:**
+**Tests — 49/49 verde:**
 - `test_auth.py` (9), `test_zona_api.py` (2), `test_zona_saved_results.py` (3)
 - `test_admin_connectors.py` (6), `test_zona_analysis.py` (1)
 - `test_denue_connector.py` (11), `test_denue_etl.py` (12)
+- `test_densidad_poblacional.py` (5)
 
 ### Pendiente (por orden de prioridad):
-1. **Endpoint densidad poblacional** — `POST /api/v1/zona/densidad-poblacional` que consulte `ageb_demographics` + `ageb_geometries`. Tablas ya existen; falta servicio + endpoint + tests.
-2. **Frontend MVP** — React + Vite + Leaflet: login, mapa, dibujar polígono, mostrar resultado.
-3. **Proteger `/admin`** — ya protegido por `role == admin`; verificar cobertura completa.
-4. **`.env.example`** — documentar variables: `DATABASE_URL`, `JWT_SECRET`, `INEGI_DENUE_TOKEN`, `REDIS_URL`.
-5. **CI/CD** — GitHub Actions que corra `make test` en cada PR.
+1. **Frontend MVP** — React + Vite + Leaflet: login, mapa, dibujar polígono, mostrar resultado de concentración comercial y densidad poblacional.
+2. **`.env.example`** — documentar variables: `DATABASE_URL`, `JWT_SECRET`, `INEGI_DENUE_TOKEN`, `REDIS_URL`.
+3. **CI/CD** — GitHub Actions que corra `make test` en cada PR.
 
 ## FLUJO DE TRABAJO QUE DEBES SEGUIR (no negociable)
 
