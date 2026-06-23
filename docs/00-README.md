@@ -28,7 +28,12 @@ Plataforma de inteligencia geoespacial y geomarketing (clon funcional inspirado 
 | Fase | Estado |
 |---|---|
 | Definición de arquitectura | ✅ Completo |
-| Módulo: Concentración Comercial (DENUE) | 🔲 En diseño |
+| Infraestructura (Docker + PostgreSQL + PostGIS + H3 + Redis) | ✅ Completo |
+| Base de datos (migración + seed dev) | ✅ Completo |
+| Autenticación JWT (login, refresh, middleware) | ✅ Completo |
+| Módulo: Concentración Comercial — backend (endpoints + tests) | ⚠️ Completo con datos demo — falta ETL real |
+| Módulo: Concentración Comercial — ETL datos INEGI DENUE | 🔲 Pendiente |
+| Módulo: Concentración Comercial — Frontend | 🔲 Pendiente |
 | Módulo: Densidad Poblacional | 🔲 Pendiente |
 | Módulo: Afluencia Vehicular | 🔲 Pendiente (depende de proveedor externo) |
 | Módulo: Afluencia de Personas / POI Explorer | 🔲 Pendiente (depende de proveedor de movilidad) |

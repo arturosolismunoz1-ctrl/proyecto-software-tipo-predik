@@ -46,11 +46,62 @@ Registro cronológico de hitos completados, para tener trazabilidad de qué se h
 - `PROMPT_CONTINUIDAD_VSCODE.md` actualizado con estado actual del código
 - `.gitignore` mejorado (cobertura, htmlcov, volúmenes Docker)
 
+## 2026-06-22 (sesión 2)
+
+### ✅ Stoppers de infraestructura resueltos
+
+**STOPPER 1 — Extensión H3 no instalada en Docker**
+- La imagen `postgis/postgis:16-3.4` no incluye H3 por defecto.
+- Solución: `infra/Dockerfile.db` que extiende la imagen base e instala `postgresql-16-h3` vía apt-get PGDG.
+- `infra/docker-compose.yml` actualizado para usar `build:` en lugar de `image:`.
+- H3 v4.2.2 verificado activo con `SELECT extname FROM pg_extension WHERE extname LIKE 'h3%'`.
+
+**STOPPER 5 — Tipos de geometría incorrectos en la migración**
+- La migración usaba `sa.types.UserDefinedType()` para columnas PostGIS, lo que causa `AttributeError` al correr.
+- Solución: reemplazado con `geoalchemy2.Geometry` con tipo y SRID explícitos en las 3 columnas afectadas.
+- `CREATE EXTENSION` actualizado con `CASCADE` para resolver dependencia de `postgis_raster`.
+
+**STOPPER 3 — Sin organización ni usuario en DB**
+- Sin seed, toda inserción en `analytics.zona_analysis_results` fallaba por violación de FK.
+- Solución: `backend/scripts/seed_dev.py` — idempotente, crea `Demo Org` y usuario `admin@predik.local`.
+- Comando `make seed` agregado al Makefile.
+- Credenciales de dev: `admin@predik.local` / `dev_password_admin`.
+
+### ✅ Migración Alembic ejecutada correctamente por primera vez
+- 7 tablas creadas: `core.organizations`, `core.users`, `core.api_credentials`, `core.query_log`, `raw_data.denue_establishments`, `cube.commercial_density_h3`, `analytics.zona_analysis_results`.
+- Extensiones activas: PostGIS 3.4.3, H3 4.2.2, H3-PostGIS 4.2.2.
+
+### ✅ Autenticación JWT implementada y testeada
+- `backend/app/auth.py` — `create_access_token`, `create_refresh_token`, `decode_token` usando `python-jose` (HS256).
+  - Access token: 30 min. Refresh token: 7 días. Payload incluye `user_id`, `org_id`, `role`.
+- `backend/app/deps.py` — dependencias compartidas `get_db` y `get_current_user` (HTTPBearer).
+- `backend/app/api/v1/auth.py` — `POST /api/v1/auth/login` y `POST /api/v1/auth/refresh`.
+  - Login valida email + contraseña bcrypt. Refresh valida tipo de token antes de emitir nuevo access.
+- Endpoints protegidos: `zona`, `analisis` (todos los endpoints de negocio requieren JWT).
+- `organization_id` ya no es hardcodeado — se extrae del token JWT en cada request.
+- `analisis.py` corregido para importar `get_db` de `app.deps` (no de `zona.py`).
+
+### ✅ Dependencias actualizadas
+- `bcrypt>=4.0.0` — hashing de contraseñas (passlib descartado por incompatibilidad con bcrypt 5.x).
+- `python-jose[cryptography]>=3.3.0` — JWT.
+- `pydantic[email]>=2.7.0` — validación de email en modelos.
+
+### ✅ Suite de tests completa — 19/19 verde
+- `test_auth.py` (9 tests): login exitoso, password incorrecta, email inexistente, refresh válido, refresh con access token, token inválido, endpoints protegidos sin/con token.
+- `test_zona_api.py` y `test_zona_saved_results.py` actualizados a `app.dependency_overrides` (patrón correcto para FastAPI — `monkeypatch` no alcanza dependencias cacheadas por `Depends`).
+- Todos los tests de endpoints de negocio ahora incluyen override de `get_current_user`.
+
+### Commit de referencia
+- `47f4e62` — `feat: agrega autenticación JWT y corrige stoppers de infraestructura`
+
+---
+
 ## Próximos pasos (por orden de prioridad)
 
-- [ ] Confirmar push a GitHub y verificar ramas remotas (`git branch -a`)
-- [ ] Módulo densidad poblacional: endpoint `POST /api/v1/zona/densidad-poblacional` + lógica con datos AGEB/Censo INEGI
-- [ ] Autenticación JWT: `POST /api/v1/auth/login` y `/refresh` + middleware de autenticación
-- [ ] ETL para poblar cubos H3 con datos reales de INEGI DENUE
-- [ ] Integración real con API INEGI DENUE en `DenueConnector` (hoy usa datos demo)
-- [ ] Frontend: scaffolding React + Vite + Leaflet
+- [ ] **ETL datos reales DENUE** — script que descarga establecimientos de la API INEGI y los persiste en `raw_data.denue_establishments`, luego agrega en `cube.commercial_density_h3` por hexágonos H3. Sin esto, el endpoint principal devuelve 404 en producción.
+- [ ] **Integración real con API INEGI DENUE** — mapear el formato real de respuesta en `DenueConnector` (hoy usa datos demo hardcodeados).
+- [ ] **Frontend MVP** — scaffolding React + Vite, pantalla de login, mapa Leaflet, dibujar polígono, mostrar resultado de concentración.
+- [ ] **Módulo densidad poblacional** — endpoint `POST /api/v1/zona/densidad-poblacional` + conector Censo/AGEB.
+- [ ] **Proteger endpoints admin** — `/admin/conectores` actualmente sin autenticación; agregar `get_current_user` con validación de `role == "admin"`.
+- [ ] **`.env.example`** — documentar todas las variables de entorno requeridas (`DATABASE_URL`, `JWT_SECRET`, `INEGI_DENUE_API_URL`, `REDIS_URL`).
+- [ ] **CI/CD** — GitHub Actions que corra `make test` en cada PR.
