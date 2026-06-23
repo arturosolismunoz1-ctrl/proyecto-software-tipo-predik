@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.deps import get_db, get_current_user
 from app.services.zona_analysis import calculate_commercial_concentration, save_zona_analysis_result, ZonaAnalysisResult
+from app.services.densidad_poblacional import calculate_densidad_poblacional
 
 router = APIRouter()
 
@@ -131,6 +132,96 @@ async def analizar_concentracion_comercial(
         negocios_ancla=[NegocioAncla(**negocio) for negocio in results["negocios_ancla"]],
         celdas_heatmap=[CeldaHeatmap(**celda) for celda in results["celdas_heatmap"]],
         analysis_id=results["analysis_id"] or str(uuid4()),
+    )
+
+
+# ── Densidad Poblacional ──────────────────────────────────────────────────────
+
+class PorGenero(BaseModel):
+    masculino: int
+    femenino: int
+
+
+class PorGrupoEdad(BaseModel):
+    field_0_14: int = Field(alias="0_14")
+    field_15_64: int = Field(alias="15_64")
+    field_65_mas: int = Field(alias="65_mas")
+
+    model_config = {"populate_by_name": True}
+
+
+class DetalleAgeb(BaseModel):
+    cvegeo: str
+    nom_ent: str
+    nom_mun: str
+    pobtot: int
+    area_km2: float
+    densidad_hab_km2: float
+    geom: str
+
+
+class DensidadPoblacionalRequest(BaseModel):
+    geometry: Geometry
+
+
+class DensidadPoblacionalResponse(BaseModel):
+    zona: ZonaInfo
+    poblacion_total: int
+    densidad_hab_km2: float
+    por_genero: PorGenero
+    por_grupo_edad: PorGrupoEdad
+    viviendas_habitadas: int
+    promedio_ocupantes: float
+    agebs_analizadas: int
+    detalle_agebs: List[DetalleAgeb]
+    analysis_id: str
+
+
+@router.post("/densidad-poblacional", response_model=DensidadPoblacionalResponse)
+async def analizar_densidad_poblacional(
+    request: DensidadPoblacionalRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    validate_geometry(request.geometry)
+
+    try:
+        polygon = {"type": request.geometry.type, "coordinates": request.geometry.coordinates}
+        result = calculate_densidad_poblacional(
+            db=db,
+            organization_id=current_user["org_id"],
+            polygon=polygon,
+        )
+        save_zona_analysis_result(
+            db=db,
+            organization_id=current_user["org_id"],
+            polygon=polygon,
+            result=result,
+            analysis_type="densidad_poblacional",
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": {
+                    "code": str(exc),
+                    "message": "La zona no tiene datos demográficos disponibles.",
+                    "details": {},
+                }
+            },
+        )
+
+    return DensidadPoblacionalResponse(
+        zona=ZonaInfo(**result["zona"]),
+        poblacion_total=result["poblacion_total"],
+        densidad_hab_km2=result["densidad_hab_km2"],
+        por_genero=PorGenero(**result["por_genero"]),
+        por_grupo_edad=PorGrupoEdad(**result["por_grupo_edad"]),
+        viviendas_habitadas=result["viviendas_habitadas"],
+        promedio_ocupantes=result["promedio_ocupantes"],
+        agebs_analizadas=result["agebs_analizadas"],
+        detalle_agebs=[DetalleAgeb(**a) for a in result["detalle_agebs"]],
+        analysis_id=result["analysis_id"],
     )
 
 
