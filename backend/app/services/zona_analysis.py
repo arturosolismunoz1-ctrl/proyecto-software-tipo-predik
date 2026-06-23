@@ -62,6 +62,23 @@ def calculate_commercial_concentration(
 
     por_categoria = sorted(categorias_agg.values(), key=lambda item: item["cantidad"], reverse=True)
 
+    # Negocios ancla: categorías con cantidad ≥ ANCLA_THRESHOLD × promedio
+    ANCLA_THRESHOLD = 2.0
+    if por_categoria:
+        promedio = total_establecimientos / len(por_categoria)
+        negocios_ancla = [
+            {
+                "nombre": cat["categoria"],
+                "categoria": cat["categoria"],
+                "lat": 0.0,
+                "lon": 0.0,
+            }
+            for cat in por_categoria
+            if cat["cantidad"] >= promedio * ANCLA_THRESHOLD
+        ]
+    else:
+        negocios_ancla = []
+
     area_km2 = db.execute(
         select(
             func.coalesce(
@@ -101,7 +118,7 @@ def calculate_commercial_concentration(
         },
         "total_establecimientos": total_establecimientos,
         "por_categoria": por_categoria,
-        "negocios_ancla": [],
+        "negocios_ancla": negocios_ancla,
         "celdas_heatmap": heatmap_cells,
         "analysis_id": str(uuid4()),
     }

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.deps import get_db, get_current_user
+from app.rate_limit import check_rate_limit
 from app.services.zona_analysis import calculate_commercial_concentration, save_zona_analysis_result, ZonaAnalysisResult
 from app.services.densidad_poblacional import calculate_densidad_poblacional
 
@@ -92,6 +93,7 @@ async def analizar_concentracion_comercial(
     request: ConcentracionComercialRequest,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    _rl: None = Depends(check_rate_limit),
 ):
     validate_geometry(request.geometry)
 
@@ -155,6 +157,7 @@ class DetalleAgeb(BaseModel):
     nom_ent: str
     nom_mun: str
     pobtot: int
+    fraccion_area: float
     area_km2: float
     densidad_hab_km2: float
     geom: str
@@ -182,6 +185,7 @@ async def analizar_densidad_poblacional(
     request: DensidadPoblacionalRequest,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    _rl: None = Depends(check_rate_limit),
 ):
     validate_geometry(request.geometry)
 

@@ -39,6 +39,7 @@ _FAKE_RESULT = {
             "nom_ent": "Ciudad de México",
             "nom_mun": "Cuauhtémoc",
             "pobtot": 5000,
+            "fraccion_area": 1.0,
             "area_km2": 1.23,
             "densidad_hab_km2": 4065.04,
             "geom": '{"type":"MultiPolygon","coordinates":[]}',

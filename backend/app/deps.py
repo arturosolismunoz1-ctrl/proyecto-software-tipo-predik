@@ -1,6 +1,6 @@
 from typing import Dict, Any
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy.orm import Session
@@ -20,6 +20,7 @@ def get_db():
 
 
 def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> Dict[str, Any]:
     token = credentials.credentials
@@ -39,8 +40,12 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return {
+    user = {
         "user_id": payload["sub"],
         "org_id": payload["org_id"],
         "role": payload["role"],
     }
+    # Exponer en request.state para que QueryLogMiddleware pueda leerlo
+    request.state.org_id = user["org_id"]
+    request.state.user_id = user["user_id"]
+    return user

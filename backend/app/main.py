@@ -1,11 +1,25 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from app.api.v1 import router as api_router
+from app.middleware import QueryLogMiddleware
+from app.scheduler import start_scheduler, stop_scheduler
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    start_scheduler()
+    yield
+    stop_scheduler()
+
 
 app = FastAPI(
     title="GeoData Predik Clone",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
+app.add_middleware(QueryLogMiddleware)
 app.include_router(api_router)
 
 
