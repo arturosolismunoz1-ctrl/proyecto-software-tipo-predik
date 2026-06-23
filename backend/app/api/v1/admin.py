@@ -1,11 +1,21 @@
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from app.connectors.registry import get_connector, list_connectors, sync_connector
+from app.deps import get_current_user
 
 router = APIRouter()
+
+
+def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"error": {"code": "PERMISOS_INSUFICIENTES", "message": "Se requiere rol admin."}},
+        )
+    return current_user
 
 
 class SyncRequest(BaseModel):
@@ -21,7 +31,7 @@ class ConnectorStatus(BaseModel):
 
 
 @router.get("/conectores", response_model=List[ConnectorStatus])
-async def obtener_conectores():
+async def obtener_conectores(current_user: dict = Depends(require_admin)):
     connectors = []
     for descriptor in list_connectors():
         connectors.append(
@@ -37,7 +47,7 @@ async def obtener_conectores():
 
 
 @router.get("/conectores/{nombre}/health", response_model=ConnectorStatus)
-async def health_connector(nombre: str):
+async def health_connector(nombre: str, current_user: dict = Depends(require_admin)):
     descriptor = get_connector(nombre)
     if descriptor is None:
         raise HTTPException(status_code=404, detail="Connector not found")
@@ -51,7 +61,7 @@ async def health_connector(nombre: str):
 
 
 @router.post("/conectores/{nombre}/sync", response_model=ConnectorStatus)
-async def sync_connector_endpoint(nombre: str, request: Optional[SyncRequest] = None):
+async def sync_connector_endpoint(nombre: str, request: Optional[SyncRequest] = None, current_user: dict = Depends(require_admin)):
     polygon = request.polygon if request else None
     try:
         descriptor = await sync_connector(nombre, polygon)
