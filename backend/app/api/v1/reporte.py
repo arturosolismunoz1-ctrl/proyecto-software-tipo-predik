@@ -44,6 +44,10 @@ class CapaBusqueda(BaseModel):
         description="Codigo de entidad INEGI (2 digitos). Ej: '09'=CDMX, '14'=Jalisco, '15'=EdoMex",
         examples=["14"],
     )
+    icon: Literal["circle", "star"] = Field(
+        default="circle",
+        description="Tipo de icono en el mapa. 'star' para marcas propias, 'circle' para competencia",
+    )
     scian_prefix: Optional[str] = Field(
         default=None,
         description="Prefijo SCIAN para filtro adicional. Ej: '4611' = farmacias",
@@ -74,11 +78,12 @@ class ReporteRequest(BaseModel):
         default="kmz",
         description="Formato de salida",
     )
-    clasificacion_hexagonos: Literal["densidad", "oportunidad"] = Field(
+    clasificacion_hexagonos: Literal["densidad", "oportunidad", "poder_adquisitivo"] = Field(
         default="densidad",
         description=(
             "densidad: colorea segun cantidad de establecimientos. "
-            "oportunidad: verde=zona libre (alta oportunidad), rojo=saturada con todas las cadenas"
+            "oportunidad: verde=zona libre (alta oportunidad), rojo=saturada con todas las cadenas. "
+            "poder_adquisitivo: clasifica AGEBs por escolaridad promedio INEGI (zonas premium)"
         ),
     )
     max_records: int = Field(default=2500, ge=1, le=2500)

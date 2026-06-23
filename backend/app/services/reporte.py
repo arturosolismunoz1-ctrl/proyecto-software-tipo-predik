@@ -56,6 +56,18 @@ _COLOR_ICONO_URL = {
     "pink":   "http://maps.google.com/mapfiles/kml/paddle/pink-circle.png",
 }
 
+# Iconos tipo estrella para marcas específicas
+_COLOR_ICONO_STAR_URL = {
+    "red":    "http://maps.google.com/mapfiles/kml/paddle/red-stars.png",
+    "green":  "http://maps.google.com/mapfiles/kml/paddle/grn-stars.png",
+    "blue":   "http://maps.google.com/mapfiles/kml/paddle/blu-stars.png",
+    "yellow": "http://maps.google.com/mapfiles/kml/paddle/ylw-stars.png",
+    "orange": "http://maps.google.com/mapfiles/kml/paddle/wht-stars.png",
+    "purple": "http://maps.google.com/mapfiles/kml/paddle/purple-stars.png",
+    "cyan":   "http://maps.google.com/mapfiles/kml/paddle/ltblu-stars.png",
+    "pink":   "http://maps.google.com/mapfiles/kml/paddle/pink-stars.png",
+}
+
 # Colores hexagonos por clasificacion de oportunidad
 _OPT_FILL = {
     "ALTA":       "CC00C800",   # verde oscuro
@@ -315,6 +327,52 @@ def clasificar_por_oportunidad(
     return result
 
 
+# ── 3b. Clasificacion por poder adquisitivo (AGEBs) ───────────────────────────
+
+_PA_FILL = {
+    "PREMIUM":    "CC005500",   # verde oscuro intenso
+    "MEDIO_ALTO": "CC22AA22",   # verde medio
+    "MEDIO":      "CC00AAFF",   # ámbar
+    "BAJO":       "CC888888",   # gris
+}
+
+_PA_LABEL = {
+    "PREMIUM":    "Zona Premium (escolaridad alta)",
+    "MEDIO_ALTO": "Zona Medio-Alta",
+    "MEDIO":      "Zona Media",
+    "BAJO":       "Zona Baja actividad",
+}
+
+
+def clasificar_por_poder_adquisitivo(agebs: List[Dict]) -> List[Dict]:
+    """
+    Clasifica AGEBs por poder adquisitivo usando grado promedio de escolaridad (graproes).
+    Fuente: INEGI Censo 2020 — graproes = años promedio de escolaridad población 15+.
+      >= 12 años (preparatoria+) → PREMIUM
+      >= 9  años (secundaria)    → MEDIO_ALTO
+      >= 6  años (primaria)      → MEDIO
+      <  6  años                 → BAJO
+    """
+    result = []
+    for a in agebs:
+        gpa = float(a.get("graproes", 0) or 0)
+        if gpa >= 12:
+            nivel = "PREMIUM"
+        elif gpa >= 9:
+            nivel = "MEDIO_ALTO"
+        elif gpa >= 6:
+            nivel = "MEDIO"
+        else:
+            nivel = "BAJO"
+        result.append({
+            **a,
+            "color": _PA_FILL[nivel],
+            "label": _PA_LABEL[nivel],
+            "nivel": nivel,
+        })
+    return result
+
+
 # ── 4. Generacion KMZ ──────────────────────────────────────────────────────────
 
 def _geojson_to_kml_coords(geom_str: str) -> str:
@@ -331,13 +389,19 @@ def _geojson_to_kml_coords(geom_str: str) -> str:
     return " ".join(f"{c[0]:.6f},{c[1]:.6f},0" for c in ring)
 
 
-def _kml_estilo_punto(sid: str, color_nombre: str) -> List[str]:
+def _kml_estilo_punto(sid: str, color_nombre: str, icon_type: str = "circle") -> List[str]:
     icon_color = _COLOR_PUNTO.get(color_nombre, "FF0000FF")
-    icon_url   = _COLOR_ICONO_URL.get(color_nombre,
-                     "http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png")
+    if icon_type == "star":
+        icon_url = _COLOR_ICONO_STAR_URL.get(color_nombre,
+                       "http://maps.google.com/mapfiles/kml/paddle/ylw-stars.png")
+        scale = "1.1"
+    else:
+        icon_url = _COLOR_ICONO_URL.get(color_nombre,
+                       "http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png")
+        scale = "0.9"
     return [
         f'  <Style id="{sid}">',
-        f'    <IconStyle><color>{icon_color}</color><scale>0.9</scale>',
+        f'    <IconStyle><color>{icon_color}</color><scale>{scale}</scale>',
         f'      <Icon><href>{icon_url}</href></Icon>',
         f'    </IconStyle>',
         f'    <LabelStyle><scale>0</scale></LabelStyle>',
@@ -381,7 +445,7 @@ def generar_kmz(
     for capa in capas_con_puntos:
         sid = f"capa_{capa['label'].lower().replace(' ', '_')[:20]}"
         capa["_style_id"] = sid
-        L.extend(_kml_estilo_punto(sid, capa.get("color", "blue")))
+        L.extend(_kml_estilo_punto(sid, capa.get("color", "blue"), capa.get("icon", "circle")))
 
     # Estilos hexagonos (uno por color unico)
     for color in colores_usados_hex:
@@ -570,7 +634,7 @@ async def generar_reporte(
     polygon: Dict[str, Any],
     capas: List[Dict[str, Any]],
     formato: Literal["kmz", "excel"],
-    clasificacion_hexagonos: Literal["densidad", "oportunidad"],
+    clasificacion_hexagonos: Literal["densidad", "oportunidad", "poder_adquisitivo"],
     max_records: int,
     h3_resolution: int,
     ejecutar_etl: bool,
@@ -618,9 +682,11 @@ async def generar_reporte(
         )
         capas_con_puntos.append({**capa, "puntos": puntos})
 
-    # 4. Clasificar hexagonos
+    # 4. Clasificar hexagonos / AGEBs
     if not hexagonos_raw:
         hexagonos: List[Dict] = []
+    elif clasificacion_hexagonos == "poder_adquisitivo" and usa_agebs:
+        hexagonos = clasificar_por_poder_adquisitivo(hexagonos_raw)
     elif clasificacion_hexagonos == "oportunidad" and len(capas_con_puntos) >= 1:
         hexagonos = clasificar_por_oportunidad(hexagonos_raw, capas_con_puntos, h3_resolution)
     else:

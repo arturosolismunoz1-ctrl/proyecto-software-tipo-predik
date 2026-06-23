@@ -187,6 +187,65 @@ Registro cronológico de hitos completados, para tener trazabilidad de qué se h
 
 ---
 
+---
+
+## 2026-06-23 (sesión 4 — Frontend MVP + ejercicio Mérida)
+
+### ✅ Ejercicio Mérida, Yucatán completado
+
+- Script `backend/scripts/prueba_merida_cadenas.py` — ejecuta ETL + reporte completo vía API
+- KMZ generado en `resultados/merida_cadenas.kmz`:
+  - **14 Little Caesar's** (estrella amarilla)
+  - **1 Dunkin'** (estrella naranja)
+  - **15 Domino's Pizza** (marcador rojo)
+  - **28 hexágonos H3** (fallback — AGEBs pendientes carga MGN)
+- BD al momento del ejercicio: 528,808 establecimientos DENUE | 61,322 AGEBs demográficas
+
+### ✅ Clasificación por poder adquisitivo implementada
+
+- `clasificar_por_poder_adquisitivo()` en `backend/app/services/reporte.py`
+  - `graproes >= 12` → PREMIUM (verde oscuro)
+  - `graproes >= 9` → MEDIO-ALTO (verde)
+  - `graproes >= 6` → MEDIO (ámbar)
+  - `graproes < 6` → BAJO (gris)
+- Nuevo campo `icon: "circle" | "star"` en `CapaBusqueda` (API + servicio)
+- `clasificacion_hexagonos` ahora acepta `"poder_adquisitivo"` además de `"densidad"` y `"oportunidad"`
+- `_kml_estilo_punto()` enruta a `_COLOR_ICONO_STAR_URL` cuando `icon="star"` (escala 1.1x)
+
+### ✅ Frontend MVP — React + Vite + Leaflet
+
+Archivos creados en `frontend/`:
+- `package.json` — React 18, Vite 5, react-leaflet 4, leaflet-draw, Zustand, Tailwind
+- `vite.config.ts` — proxy `/api` → `localhost:8000`
+- `src/main.tsx`, `src/App.tsx` — entry point + React Router
+- `src/pages/LoginPage.tsx` — login con branding dividido (como PREDIK)
+- `src/pages/MapPage.tsx` — mapa Leaflet + sidebar de 3 pasos
+- `src/api/client.ts` — fetch con JWT, `apiLogin`, `apiEstados`, `apiGenerarReporte`, `apiBdStatus`
+- `src/store/useAuthStore.ts` — Zustand, persiste en localStorage
+- `src/types.ts` — TypeScript types compartidos
+- `src/index.css` — Tailwind + Leaflet + leaflet-draw CSS
+
+**Features del frontend:**
+- Login con doble panel (branding izquierda / form derecha) — estilo enterprise
+- Mapa CartoDB Positron (mapa limpio tipo geomarketing profesional)
+- Herramienta de dibujo: polígono y rectángulo via leaflet-draw
+- Panel sidebar 3 pasos: 1) Área 2) Capas 3) Opciones
+- Capas configurables: keyword, etiqueta, color (8 colores), icono (punto/estrella), estado (32 estados)
+- Clasificación: densidad / oportunidad / poder adquisitivo
+- Formato: KMZ o Excel
+- Badges de estado de BD (DENUE y Censo)
+- Descarga automática del archivo al generar reporte
+- Spinner durante generación (3-8 min)
+
+**URL:** http://localhost:5173 (backend en :8000, proxy configurado)
+
+### ✅ CORS habilitado en backend
+
+- `CORSMiddleware` agregado en `backend/app/main.py`
+- Orígenes permitidos: `localhost:5173`, `localhost:3000`, `127.0.0.1:5173`
+
+---
+
 ## Próximos pasos (por orden de prioridad)
 
 - [ ] **Cargar MGN 2025** — cuando termine la descarga (~2.7 GB): `python backend/scripts/load_marco_geoestadistico.py --dir data/mgn/`

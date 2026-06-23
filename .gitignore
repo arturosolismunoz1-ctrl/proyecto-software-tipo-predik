@@ -46,6 +46,12 @@ desktop.ini
 .vscode/
 .idea/
 
+# --- Datos locales grandes (se regeneran con ETL, no se versionan) ---
+data/censo_2020/
+data/mgn/
+data/denue/
+resultados/
+
 # --- Prohibido explícitamente por convención del proyecto ---
 *final*.zip
 *definitivo*
