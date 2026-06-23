@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -19,7 +19,7 @@ class BaseConnector(ABC):
     requires_auth: bool = False
 
     @abstractmethod
-    async def fetch(self, polygon: Dict[str, Any], **params) -> List[GeoFeature]:
+    async def fetch(self, polygon: Optional[Dict[str, Any]] = None, **params) -> List[GeoFeature]:
         ...
 
     @abstractmethod

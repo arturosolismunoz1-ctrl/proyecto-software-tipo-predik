@@ -1,4 +1,4 @@
-.PHONY: dev down restart logs db-shell migrate migrate-create seed test install lint help
+.PHONY: dev down restart logs db-shell migrate migrate-create seed etl test install lint help
 
 COMPOSE_FILE := infra/docker-compose.yml
 BACKEND_DIR  := backend
@@ -47,6 +47,9 @@ migrate-create:
 seed:
 	$(PYTHON) $(BACKEND_DIR)/scripts/seed_dev.py
 
+etl:
+	$(PYTHON) $(BACKEND_DIR)/scripts/run_etl.py $(ETL_ARGS)
+
 # ── Tests y calidad ───────────────────────────────────────────────────────────
 
 test:
@@ -76,5 +79,6 @@ help:
 	@echo "  make test          Corre la suite de tests"
 	@echo "  make test-cov      Tests con reporte de cobertura"
 	@echo "  make seed          Inserta org y usuario admin de desarrollo en la DB"
+	@echo "  make etl           Corre ETL (ETL_ARGS='--source inegi_denue --estado 09 --max-records 500')"
 	@echo "  make lint          Revisa estilo con ruff"
 	@echo ""
