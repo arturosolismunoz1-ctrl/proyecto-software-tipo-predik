@@ -96,12 +96,28 @@ Registro cronológico de hitos completados, para tener trazabilidad de qué se h
 
 ---
 
+## 2026-06-23
+
+### ✅ Tablas AGEB/Censo 2020 y scripts de carga geoespacial
+
+- **Migración `0002_ageb_tables`** aplicada: 3 tablas nuevas en `raw_data`:
+  - `ageb_geometries` — polígonos del Marco Geoestadístico Nacional (MGN) con índice GIST
+  - `ageb_demographics` — indicadores del Censo 2020 por AGEB (población, vivienda, salud, educación)
+  - `manzana_vivienda` — geometrías e indicadores a nivel manzana con índice GIST
+- **`backend/scripts/load_marco_geoestadistico.py`** — carga shapefiles del MGN hacia `ageb_geometries`; resolución automática de campos entre versiones del MGN, upsert por `cvegeo`, filtro opcional por entidad.
+- **`backend/scripts/load_censo_2020.py`** — carga CSVs del Censo 2020 hacia `ageb_demographics`; agrupa columnas de edad crudas en grupos `p_0a14/p_15a64/p_65ymas`, soporte para un archivo o directorio completo, modo `--manzanas`.
+- **`pyshp>=3.0` y `shapely>=2.0`** agregados a `requirements.txt`.
+- **44/44 tests verdes** tras el commit.
+
+### Commit de referencia
+- `7d2246e` — `feat: agrega tablas AGEB/Censo 2020 y scripts de carga geoespacial`
+
+---
+
 ## Próximos pasos (por orden de prioridad)
 
-- [ ] **ETL datos reales DENUE** — script que descarga establecimientos de la API INEGI y los persiste en `raw_data.denue_establishments`, luego agrega en `cube.commercial_density_h3` por hexágonos H3. Sin esto, el endpoint principal devuelve 404 en producción.
-- [ ] **Integración real con API INEGI DENUE** — mapear el formato real de respuesta en `DenueConnector` (hoy usa datos demo hardcodeados).
+- [ ] **Endpoint densidad poblacional** — `POST /api/v1/zona/densidad-poblacional` que consulte `ageb_demographics` + `ageb_geometries` para calcular densidad en el polígono dado. Requiere cargar datos reales primero con los scripts anteriores.
 - [ ] **Frontend MVP** — scaffolding React + Vite, pantalla de login, mapa Leaflet, dibujar polígono, mostrar resultado de concentración.
-- [ ] **Módulo densidad poblacional** — endpoint `POST /api/v1/zona/densidad-poblacional` + conector Censo/AGEB.
 - [ ] **Proteger endpoints admin** — `/admin/conectores` actualmente sin autenticación; agregar `get_current_user` con validación de `role == "admin"`.
 - [ ] **`.env.example`** — documentar todas las variables de entorno requeridas (`DATABASE_URL`, `JWT_SECRET`, `INEGI_DENUE_API_URL`, `REDIS_URL`).
 - [ ] **CI/CD** — GitHub Actions que corra `make test` en cada PR.

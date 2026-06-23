@@ -33,54 +33,49 @@ Estoy construyendo un clon funcional de **GeoData Intelligence** (plataforma de 
 - Usuario de prueba en DB: `admin@predik.local` / `dev_password_admin` (creado con `make seed`)
 - **Makefile** en el root — ejecutar `make help` para ver todos los comandos.
 
-## ESTADO ACTUAL DEL CÓDIGO (al 2026-06-22, commit 47f4e62)
+## ESTADO ACTUAL DEL CÓDIGO (al 2026-06-23, commit 7d2246e)
 
 ### Ya implementado y commiteado en git:
 
 **Infraestructura:**
 - `infra/Dockerfile.db` — imagen PostgreSQL 16 + PostGIS 3.4 + H3 4.2.2
 - `infra/docker-compose.yml` — db + redis, usa Dockerfile.db
-- `Makefile` — dev, run, test, seed, migrate, migrate-down, lint, test-cov, db-shell
+- `Makefile` — dev, run, test, seed, migrate, migrate-down, lint, test-cov, db-shell, etl
 
-**Base de datos:**
-- `backend/alembic/versions/0001_initial_schemas.py` — migración completa y verificada
-- 7 tablas: `core.organizations`, `core.users`, `core.api_credentials`, `core.query_log`, `raw_data.denue_establishments`, `cube.commercial_density_h3`, `analytics.zona_analysis_results`
+**Base de datos — 10 tablas totales:**
+- Migración `0001`: `core.organizations`, `core.users`, `core.api_credentials`, `core.query_log`, `raw_data.denue_establishments`, `cube.commercial_density_h3`, `analytics.zona_analysis_results`
+- Migración `0002`: `raw_data.ageb_geometries`, `raw_data.ageb_demographics`, `raw_data.manzana_vivienda`
 - Extensiones activas: PostGIS 3.4.3, H3 4.2.2, H3-PostGIS 4.2.2
 - `backend/scripts/seed_dev.py` — crea org y usuario admin (idempotente)
 
 **Backend — modelos y conectores:**
-- `backend/app/db.py` — sesión SQLAlchemy + engine
-- `backend/app/models/` — ORM completo: `core`, `raw_data`, `cube`, `analytics`
-- `backend/app/connectors/base.py` — `BaseConnector` + `GeoFeature`
-- `backend/app/connectors/inegi/denue.py` — `DenueConnector` (datos demo, sin API real)
-- `backend/app/connectors/registry.py` — registro centralizado
+- `backend/app/models/` — ORM completo: `core`, `raw_data` (incl. AGEB), `cube`, `analytics`
+- `backend/app/connectors/inegi/denue.py` — `DenueConnector` con API real INEGI (token via `INEGI_DENUE_TOKEN`)
+- `backend/app/etl/base.py` + `backend/app/etl/denue.py` — pipeline ETL: extract→transform→load_raw→aggregate_h3
 
 **Backend — API:**
-- `backend/app/main.py` — entrada FastAPI, prefix `/api/v1`
-- `backend/app/auth.py` — `create_access_token`, `create_refresh_token`, `decode_token`
-- `backend/app/deps.py` — `get_db`, `get_current_user` (HTTPBearer)
-- `backend/app/api/v1/auth.py` — `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`
-- `backend/app/api/v1/zona.py` — `POST /api/v1/zona/concentracion-comercial` (protegido JWT)
-- `backend/app/api/v1/analisis.py` — `GET/DELETE /api/v1/analisis/{id}`, `GET /api/v1/analisis/` (protegidos JWT)
-- `backend/app/api/v1/admin.py` — `GET /api/v1/admin/conectores`, health, sync (sin auth aún)
-- `backend/app/services/zona_analysis.py` — lógica de concentración comercial con PostGIS
+- `POST /api/v1/auth/login` y `POST /api/v1/auth/refresh` (JWT HS256, 30min/7días)
+- `POST /api/v1/zona/concentracion-comercial` (protegido JWT)
+- `GET/DELETE /api/v1/analisis` y `/analisis/{id}` (protegidos JWT)
+- `GET /api/v1/admin/conectores`, health, sync (requiere `role == admin`)
+- `POST /api/v1/admin/etl/{source}/run` (requiere `role == admin`)
 
-**Tests — 19/19 verde:**
-- `tests/test_auth.py` — 9 tests de autenticación JWT
-- `tests/test_zona_api.py` — 2 tests de endpoint de concentración
-- `tests/test_zona_saved_results.py` — 3 tests de CRUD de análisis
-- `tests/test_admin_connectors.py` — 4 tests de conectores
-- `tests/test_zona_analysis.py` — 1 test de servicio de análisis
-- Patrón: todos los tests de endpoints usan `app.dependency_overrides` (NO monkeypatch)
+**Scripts de carga de datos:**
+- `backend/scripts/run_etl.py` — CLI para lanzar ETL DENUE por polígono/bbox
+- `backend/scripts/load_marco_geoestadistico.py` — carga shapefile MGN → `ageb_geometries`
+- `backend/scripts/load_censo_2020.py` — carga CSV Censo 2020 → `ageb_demographics`
+
+**Tests — 44/44 verde:**
+- `test_auth.py` (9), `test_zona_api.py` (2), `test_zona_saved_results.py` (3)
+- `test_admin_connectors.py` (6), `test_zona_analysis.py` (1)
+- `test_denue_connector.py` (11), `test_denue_etl.py` (12)
 
 ### Pendiente (por orden de prioridad):
-1. **ETL datos reales DENUE** — sin esto el endpoint principal devuelve 404 en producción (cubo H3 vacío).
+1. **Endpoint densidad poblacional** — `POST /api/v1/zona/densidad-poblacional` que consulte `ageb_demographics` + `ageb_geometries`. Tablas ya existen; falta servicio + endpoint + tests.
 2. **Frontend MVP** — React + Vite + Leaflet: login, mapa, dibujar polígono, mostrar resultado.
-3. **Integración real API INEGI DENUE** — mapear formato real en `DenueConnector`.
-4. **Módulo densidad poblacional** — `POST /api/v1/zona/densidad-poblacional` + Censo/AGEB.
-5. **Proteger `/admin`** — agregar JWT con validación `role == "admin"`.
-6. **`.env.example`** — documentar variables: `DATABASE_URL`, `JWT_SECRET`, `INEGI_DENUE_API_URL`, `REDIS_URL`.
-7. **CI/CD** — GitHub Actions que corra `make test` en cada PR.
+3. **Proteger `/admin`** — ya protegido por `role == admin`; verificar cobertura completa.
+4. **`.env.example`** — documentar variables: `DATABASE_URL`, `JWT_SECRET`, `INEGI_DENUE_TOKEN`, `REDIS_URL`.
+5. **CI/CD** — GitHub Actions que corra `make test` en cada PR.
 
 ## FLUJO DE TRABAJO QUE DEBES SEGUIR (no negociable)
 
