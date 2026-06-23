@@ -1,4 +1,4 @@
-.PHONY: dev down restart logs db-shell migrate migrate-create test install lint help
+.PHONY: dev down restart logs db-shell migrate migrate-create seed test install lint help
 
 COMPOSE_FILE := infra/docker-compose.yml
 BACKEND_DIR  := backend
@@ -44,6 +44,9 @@ migrate-create:
 	@read -p "Nombre de la migración: " name; \
 	cd $(BACKEND_DIR) && ../$(ALEMBIC) revision --autogenerate -m "$$name"
 
+seed:
+	$(PYTHON) $(BACKEND_DIR)/scripts/seed_dev.py
+
 # ── Tests y calidad ───────────────────────────────────────────────────────────
 
 test:
@@ -72,5 +75,6 @@ help:
 	@echo "  make migrate-create Crea una nueva migración (pide nombre)"
 	@echo "  make test          Corre la suite de tests"
 	@echo "  make test-cov      Tests con reporte de cobertura"
+	@echo "  make seed          Inserta org y usuario admin de desarrollo en la DB"
 	@echo "  make lint          Revisa estilo con ruff"
 	@echo ""

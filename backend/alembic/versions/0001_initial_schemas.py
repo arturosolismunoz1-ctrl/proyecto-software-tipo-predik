@@ -6,6 +6,7 @@ Create Date: 2026-06-20 00:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
+from geoalchemy2 import Geometry
 
 revision = "0001_initial_schemas"
 down_revision = None
@@ -15,9 +16,9 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
-    op.execute("CREATE EXTENSION IF NOT EXISTS postgis")
-    op.execute("CREATE EXTENSION IF NOT EXISTS h3")
-    op.execute("CREATE EXTENSION IF NOT EXISTS h3_postgis")
+    op.execute("CREATE EXTENSION IF NOT EXISTS postgis CASCADE")
+    op.execute("CREATE EXTENSION IF NOT EXISTS h3 CASCADE")
+    op.execute("CREATE EXTENSION IF NOT EXISTS h3_postgis CASCADE")
 
     op.execute("CREATE SCHEMA IF NOT EXISTS core")
     op.execute("CREATE SCHEMA IF NOT EXISTS raw_data")
@@ -82,7 +83,7 @@ def upgrade() -> None:
         sa.Column("localidad", sa.String(length=100)),
         sa.Column("colonia", sa.String(length=150)),
         sa.Column("cp", sa.String(length=10)),
-        sa.Column("geom", sa.types.UserDefinedType(), nullable=True),
+        sa.Column("geom", Geometry(geometry_type="POINT", srid=4326), nullable=True),
         sa.Column("fuente_actualizacion", sa.Date()),
         sa.Column("fetched_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         sa.Column("raw_response", sa.JSON()),
@@ -100,8 +101,8 @@ def upgrade() -> None:
         sa.Column("total_establecimientos", sa.Integer()),
         sa.Column("por_categoria", sa.JSON()),
         sa.Column("top_categoria", sa.String(length=255)),
-        sa.Column("geom_centroid", sa.types.UserDefinedType(), nullable=True),
-        sa.Column("geom_hexagon", sa.types.UserDefinedType(), nullable=True),
+        sa.Column("geom_centroid", Geometry(geometry_type="POINT", srid=4326), nullable=True),
+        sa.Column("geom_hexagon", Geometry(geometry_type="POLYGON", srid=4326), nullable=True),
         sa.Column("last_refreshed", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         schema="cube",
     )
@@ -112,7 +113,7 @@ def upgrade() -> None:
         sa.Column("id", sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("organization_id", sa.dialects.postgresql.UUID(as_uuid=True), sa.ForeignKey("core.organizations.id"), nullable=False),
         sa.Column("user_id", sa.dialects.postgresql.UUID(as_uuid=True), sa.ForeignKey("core.users.id"), nullable=True),
-        sa.Column("polygon", sa.types.UserDefinedType(), nullable=True),
+        sa.Column("polygon", Geometry(geometry_type="POLYGON", srid=4326), nullable=True),
         sa.Column("analysis_type", sa.String(length=50)),
         sa.Column("result_json", sa.JSON()),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),

@@ -5,14 +5,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.v1.schemas import AnalisisSummary, ConcentracionComercialResponse
-from app.api.v1.zona import get_db
+from app.deps import get_db, get_current_user
 from app.models.analytics import ZonaAnalysisResult
 
 router = APIRouter()
 
 
 @router.get("/", response_model=List[AnalisisSummary])
-async def listar_analisis(db: Session = Depends(get_db)):
+async def listar_analisis(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     results = db.execute(select(ZonaAnalysisResult)).scalars().all()
     summaries = []
     for record in results:
@@ -30,7 +30,7 @@ async def listar_analisis(db: Session = Depends(get_db)):
 
 
 @router.get("/{analysis_id}", response_model=ConcentracionComercialResponse)
-async def obtener_analisis(analysis_id: str, db: Session = Depends(get_db)):
+async def obtener_analisis(analysis_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     record = db.get(ZonaAnalysisResult, analysis_id)
     if record is None:
         raise HTTPException(
@@ -56,7 +56,7 @@ async def obtener_analisis(analysis_id: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/{analysis_id}")
-async def eliminar_analisis(analysis_id: str, db: Session = Depends(get_db)):
+async def eliminar_analisis(analysis_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     record = db.get(ZonaAnalysisResult, analysis_id)
     if record is None:
         raise HTTPException(

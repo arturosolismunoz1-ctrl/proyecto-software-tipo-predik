@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.db import SessionLocal
+from app.deps import get_db, get_current_user
 from app.services.zona_analysis import calculate_commercial_concentration, save_zona_analysis_result, ZonaAnalysisResult
 
 router = APIRouter()
@@ -86,18 +86,11 @@ def validate_geometry(geometry: Geometry) -> None:
         )
 
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
 @router.post("/concentracion-comercial", response_model=ConcentracionComercialResponse)
 async def analizar_concentracion_comercial(
     request: ConcentracionComercialRequest,
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     validate_geometry(request.geometry)
 
@@ -105,13 +98,13 @@ async def analizar_concentracion_comercial(
         payload_polygon = {"type": request.geometry.type, "coordinates": request.geometry.coordinates}
         results = calculate_commercial_concentration(
             db=db,
-            organization_id="00000000-0000-0000-0000-000000000000",
+            organization_id=current_user["org_id"],
             polygon=payload_polygon,
             filtros=request.filtros.model_dump() if request.filtros else None,
         )
         save_zona_analysis_result(
             db=db,
-            organization_id="00000000-0000-0000-0000-000000000000",
+            organization_id=current_user["org_id"],
             polygon=payload_polygon,
             result=results,
         )
@@ -145,6 +138,7 @@ async def analizar_concentracion_comercial(
 async def obtener_concentracion_guardada(
     analysis_id: str,
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     record = db.get(ZonaAnalysisResult, analysis_id)
     if record is None:
