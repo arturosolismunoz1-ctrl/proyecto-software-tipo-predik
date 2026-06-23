@@ -101,11 +101,13 @@ def calculate_commercial_concentration(
     heatmap_cells: List[Dict[str, Any]] = []
     for row in rows:
         geom_json = db.execute(select(func.ST_AsGeoJSON(row.geom_hexagon))).scalar_one_or_none()
-        intensidade = float((row.total_establecimientos or 0) / max(total_establecimientos, 1))
+        cantidad = row.total_establecimientos or 0
+        intensidad = float(cantidad / max(total_establecimientos, 1))
         heatmap_cells.append(
             {
                 "h3_index": row.h3_index,
-                "intensidad": intensidade,
+                "intensidad": intensidad,
+                "cantidad": cantidad,
                 "geom": geom_json or "",
             }
         )

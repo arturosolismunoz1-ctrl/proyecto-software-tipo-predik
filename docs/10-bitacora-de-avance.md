@@ -129,8 +129,69 @@ Registro cronológico de hitos completados, para tener trazabilidad de qué se h
 
 ---
 
+## 2026-06-23 (sesión 3 — ETL real, reportes genéricos, datos INEGI completos)
+
+### ✅ ETL DENUE real — 322 papelerías Ecatepec verificadas
+
+- **`backend/app/connectors/inegi/denue.py`** — corregido; eliminado endpoint `BuscarAreaActividadEntidad` (devuelve 404 en API real). La función `fetch()` ahora usa `BuscarEntidad` con keyword real.
+- **`backend/app/main.py`** — agregado `load_dotenv()` para que el proceso servidor cargue el token INEGI desde `.env`.
+- **Quirk descubierto:** keyword `"."` como wildcard se normaliza a `/` por todos los clientes HTTP Python (RFC). Solución: iterar sobre lista `SECTORES_DENUE` (20 categorías SCIAN).
+- **Quirk descubierto:** keyword `"mcdonald"` causa abort de conexión en API INEGI. Usar `"mc donalds"` (con espacio).
+- Prueba funcional exitosa: 322 papelerías en Ecatepec, 265 celdas H3 con gradiente de color.
+
+### ✅ Endpoint /zona/establecimientos
+
+- **`POST /api/v1/zona/establecimientos`** — devuelve puntos DENUE individuales dentro de un polígono filtrados por keyword. Usado por scripts de generación KMZ.
+- Modelo `CeldaHeatmap` actualizado con campo `cantidad: int`.
+
+### ✅ Reporte genérico multicapa
+
+- **`backend/app/services/reporte.py`** (nuevo) — servicio completo de generación de reportes:
+  - `run_etl_capas()` — corre ETL DENUE por cada capa
+  - `query_puntos_capa()` — consulta establecimientos por keyword en polígono
+  - `query_agebs_en_poligono()` — consulta AGEBs + demographics + conteo DENUE por AGEB (ST_Within)
+  - `clasificar_por_densidad()` — gradiente verde→amarillo→rojo según densidad
+  - `clasificar_por_oportunidad()` — ALTA/MEDIA_ALTA/MEDIA/BAJA/SATURADA
+  - `generar_kmz()` — bytes KMZ con AGEBs (si existen) o H3 (fallback) + puntos por capa
+  - `generar_excel()` — bytes Excel con resumen + hoja por capa
+  - `generar_reporte()` — orquestador principal; detecta automáticamente si usar AGEBs o H3
+- **`POST /api/v1/reporte/generar`** — endpoint genérico que acepta: polygon + N capas (keyword, label, color, estado) + formato (kmz/excel) + clasificacion_hexagonos (densidad/oportunidad).
+
+### ✅ Catálogo estados y municipios
+
+- **`GET /api/v1/catalogo/estados`** — 32 estados con clave INEGI, nombre, abreviatura.
+- **`GET /api/v1/catalogo/municipios/{clave}`** — municipios de un estado (catálogo estático de los más consultados).
+
+### ✅ ETL maestro + descarga masiva de datos
+
+- **`backend/scripts/etl_maestro.py`** — ETL maestro que orquesta:
+  1. Marco Geoestadístico Nacional (shapefiles MGN)
+  2. Censo 2020 AGEB (CSVs)
+  3. DENUE via API (paginado, sector por sector)
+  - Itera 20 sectores SCIAN × 32 estados; deduplicación por CLEE via `ON CONFLICT DO UPDATE`.
+- **`backend/scripts/descargar_censo_2020.py`** — descarga automática de los 32 estados desde URL directa INEGI. **Ejecutado exitosamente: 32/32 estados en 4.7 minutos, 128,626 AGEBs cargadas.**
+- **`backend/scripts/load_censo_2020.py`** — corregido para: usar `POB0_14`/`POB15_64`/`POB65_MAS` (columnas reales del archivo), filtrar totales estatales/municipales (AGEB="0000", MUN="000").
+- **`backend/scripts/load_marco_geoestadistico.py`** — agregada función `load_directory()` con auto-discovery de shapefiles `*a.shp` en cualquier estructura de carpetas MGN.
+
+### ✅ Endpoint de estado de la base de datos
+
+- **`GET /api/v1/admin/bd-status`** — muestra conteo de registros y estado (vacia/parcial/poblada) de las 4 tablas clave. Indica si el sistema está listo para generar reportes.
+
+### Estado de datos al cierre de sesión:
+| Tabla | Registros |
+|---|---|
+| `raw_data.ageb_demographics` | **128,626** ✅ |
+| `raw_data.ageb_geometries` | 0 ⏳ (MGN 2025 descargándose ~2.7 GB) |
+| `raw_data.denue_establishments` | ~360 (ETL maestro iniciado, en proceso) |
+| `cube.commercial_density_h3` | ~294 |
+
+---
+
 ## Próximos pasos (por orden de prioridad)
 
-- [ ] **Frontend MVP** — scaffolding React + Vite, pantalla de login, mapa Leaflet, dibujar polígono, mostrar resultado de concentración y densidad.
+- [ ] **Cargar MGN 2025** — cuando termine la descarga (~2.7 GB): `python backend/scripts/load_marco_geoestadistico.py --dir data/mgn/`
+- [ ] **Relanzar ETL DENUE maestro** — `python backend/scripts/etl_maestro.py --solo-denue`
+- [ ] **Prueba funcional con AGEBs reales** — repetir Ecatepec/Guadalajara; los polígonos deben ser AGEBs INEGI reales.
+- [ ] **Frontend MVP** — React + Vite + Leaflet: login, mapa, dropdowns estado/municipio, búsqueda multi-capa, descarga KMZ/Excel.
 - [ ] **`.env.example`** — documentar variables: `DATABASE_URL`, `JWT_SECRET`, `INEGI_DENUE_TOKEN`, `REDIS_URL`.
 - [ ] **CI/CD** — GitHub Actions que corra `make test` en cada PR.

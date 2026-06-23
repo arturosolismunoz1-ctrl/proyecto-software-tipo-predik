@@ -79,16 +79,16 @@ def _row_to_record(row: dict) -> dict:
     cvegeo = _build_cvegeo(row)
     typed = {k.upper(): v for k, v in row.items()}
 
-    # Grupos de edad sumados desde columnas individuales
-    p_0a14 = sum(
-        _int(typed.get(c, "") or "") or 0
-        for c in ["P_0A2", "P_3A5", "P_6A11", "P_12A14"]
-    )
-    p_15a64 = sum(
-        _int(typed.get(c, "") or "") or 0
-        for c in ["P_15A17", "P_18A24", "P_25A59"]
-    )
-    p_65ymas = _int(typed.get("P_60YMAS", "") or "") or 0  # proxy
+    # Preferir columnas de totales precalculados si existen (formato 2020)
+    # POB0_14, POB15_64, POB65_MAS están en el archivo RESAGEBURB
+    p_0a14  = (_int(typed.get("POB0_14",  "") or "")
+               or sum(_int(typed.get(c,"") or "") or 0
+                      for c in ["P_0A2","P_3A5","P_6A11","P_12A14"]))
+    p_15a64 = (_int(typed.get("POB15_64", "") or "")
+               or sum(_int(typed.get(c,"") or "") or 0
+                      for c in ["P_15A17","P_18A24","P_25A59"]))
+    p_65ymas = (_int(typed.get("POB65_MAS","") or "")
+                or _int(typed.get("P_60YMAS","") or "") or 0)
 
     return {
         "cvegeo":     cvegeo,
@@ -129,9 +129,17 @@ def load_csv(path: str, include_manzanas: bool = False, batch_size: int = 1000) 
         with open(path, encoding="latin-1", newline="") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                mza = str(row.get("MZA", "")).strip()
-                is_ageb_total = mza == "000"
+                mza  = str(row.get("MZA",  "")).strip()
+                ageb = str(row.get("AGEB", "")).strip()
+                mun  = str(row.get("MUN",  "")).strip()
 
+                # Saltar filas de totales estatales/municipales/localidad
+                # que tienen AGEB="0000" o MUN="000"
+                if ageb == "0000" or mun == "000":
+                    skipped += 1
+                    continue
+
+                is_ageb_total = mza == "000"
                 if not is_ageb_total and not include_manzanas:
                     skipped += 1
                     continue

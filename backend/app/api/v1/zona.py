@@ -5,7 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from sqlalchemy import func as sqlfunc, or_
+
 from app.deps import get_db, get_current_user
+from app.models.raw_data import DenueEstablishment
 from app.rate_limit import check_rate_limit
 from app.services.zona_analysis import calculate_commercial_concentration, save_zona_analysis_result, ZonaAnalysisResult
 from app.services.densidad_poblacional import calculate_densidad_poblacional
@@ -45,6 +48,7 @@ class NegocioAncla(BaseModel):
 class CeldaHeatmap(BaseModel):
     h3_index: str
     intensidad: float
+    cantidad: int
     geom: str
 
 
@@ -257,3 +261,91 @@ async def obtener_concentracion_guardada(
         celdas_heatmap=[CeldaHeatmap(**celda) for celda in result["celdas_heatmap"]],
         analysis_id=result["analysis_id"],
     )
+
+
+# ── Establecimientos individuales ─────────────────────────────────────────────
+
+class EstablecimientoItem(BaseModel):
+    nombre: str
+    clase_actividad: str
+    codigo_scian: str
+    estrato_personal: str
+    colonia: str
+    municipio: str
+    lat: float
+    lon: float
+
+
+class EstablecimientosRequest(BaseModel):
+    geometry: Geometry
+    keyword: Optional[str] = None        # filtra nombre o clase por substring
+    scian_prefix: Optional[str] = None   # filtra por prefijo SCIAN, e.g. "4511"
+
+
+class EstablecimientosResponse(BaseModel):
+    total: int
+    establecimientos: List[EstablecimientoItem]
+
+
+@router.post("/establecimientos", response_model=EstablecimientosResponse)
+async def obtener_establecimientos(
+    request: EstablecimientosRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    _rl: None = Depends(check_rate_limit),
+):
+    validate_geometry(request.geometry)
+
+    import json
+    from geoalchemy2 import functions as geo_funcs
+    from sqlalchemy import select
+
+    polygon_json = json.dumps({"type": request.geometry.type, "coordinates": request.geometry.coordinates})
+
+    stmt = select(
+        DenueEstablishment.nombre,
+        DenueEstablishment.clase_actividad,
+        DenueEstablishment.codigo_scian,
+        DenueEstablishment.estrato_personal,
+        DenueEstablishment.colonia,
+        DenueEstablishment.municipio,
+        sqlfunc.ST_X(DenueEstablishment.geom).label("lon"),
+        sqlfunc.ST_Y(DenueEstablishment.geom).label("lat"),
+    ).where(
+        DenueEstablishment.geom.isnot(None),
+        geo_funcs.ST_Intersects(
+            DenueEstablishment.geom,
+            geo_funcs.ST_GeomFromGeoJSON(polygon_json),
+        ),
+    )
+
+    if request.scian_prefix:
+        stmt = stmt.where(DenueEstablishment.codigo_scian.like(f"{request.scian_prefix}%"))
+
+    if request.keyword:
+        kw = request.keyword.lower()
+        stmt = stmt.where(
+            or_(
+                sqlfunc.lower(DenueEstablishment.nombre).like(f"%{kw}%"),
+                sqlfunc.lower(DenueEstablishment.clase_actividad).like(f"%{kw}%"),
+            )
+        )
+
+    rows = db.execute(stmt).all()
+
+    items = [
+        EstablecimientoItem(
+            nombre=r.nombre or "",
+            clase_actividad=r.clase_actividad or "",
+            codigo_scian=r.codigo_scian or "",
+            estrato_personal=r.estrato_personal or "",
+            colonia=r.colonia or "",
+            municipio=r.municipio or "",
+            lat=float(r.lat),
+            lon=float(r.lon),
+        )
+        for r in rows
+        if r.lat and r.lon
+    ]
+
+    return EstablecimientosResponse(total=len(items), establecimientos=items)

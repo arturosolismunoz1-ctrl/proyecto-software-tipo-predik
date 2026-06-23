@@ -2,9 +2,10 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy import text
 
 from app.connectors.registry import get_connector, list_connectors, sync_connector
-from app.deps import get_current_user
+from app.deps import get_current_user, get_db
 
 router = APIRouter()
 
@@ -28,6 +29,61 @@ class ConnectorStatus(BaseModel):
     ultima_sincronizacion: str
     registros: int
     mensaje: Optional[str] = None
+
+
+class TablaStatus(BaseModel):
+    tabla: str
+    registros: int
+    estado: str       # "poblada" | "parcial" | "vacia"
+
+
+class BDStatus(BaseModel):
+    tablas: List[TablaStatus]
+    resumen: str
+    listo_para_reportes: bool
+
+
+@router.get("/bd-status", response_model=BDStatus, summary="Estado de poblacion de la base de datos")
+async def bd_status(db=Depends(get_db), _=Depends(require_admin)):
+    """Muestra cuántos registros tiene cada tabla clave y si el sistema está listo."""
+    _TABLAS = [
+        ("raw_data.denue_establishments", 100_000, "DENUE establecimientos"),
+        ("raw_data.ageb_geometries",      10_000,  "AGEBs geometrias (MGN)"),
+        ("raw_data.ageb_demographics",    10_000,  "AGEBs censo 2020"),
+        ("cube.commercial_density_h3",    1_000,   "Cubo densidad H3"),
+    ]
+
+    tablas = []
+    for tabla_sql, umbral_ok, _ in _TABLAS:
+        try:
+            n = db.execute(text(f"SELECT COUNT(*) FROM {tabla_sql}")).scalar() or 0
+        except Exception:
+            n = -1
+        if n < 0:
+            estado = "error"
+        elif n == 0:
+            estado = "vacia"
+        elif n < umbral_ok:
+            estado = "parcial"
+        else:
+            estado = "poblada"
+        tablas.append(TablaStatus(tabla=tabla_sql, registros=n, estado=estado))
+
+    denue_ok  = next((t for t in tablas if "denue" in t.tabla), None)
+    ageb_ok   = next((t for t in tablas if "geometries" in t.tabla), None)
+    listo = bool(denue_ok and denue_ok.registros > 1_000)
+
+    vacias = [t.tabla.split(".")[-1] for t in tablas if t.estado == "vacia"]
+    parciales = [t.tabla.split(".")[-1] for t in tablas if t.estado == "parcial"]
+
+    if vacias:
+        resumen = f"Tablas vacias: {', '.join(vacias)}"
+    elif parciales:
+        resumen = f"Carga parcial en: {', '.join(parciales)}"
+    else:
+        resumen = "Base de datos completamente poblada"
+
+    return BDStatus(tablas=tablas, resumen=resumen, listo_para_reportes=listo)
 
 
 @router.get("/conectores", response_model=List[ConnectorStatus])

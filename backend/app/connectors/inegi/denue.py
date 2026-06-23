@@ -90,10 +90,9 @@ class DenueConnector(BaseConnector):
         if not token:
             return self._fallback(polygon)
 
-        estado = params.get("estado", "09")
-        keyword = params.get("keyword", "")
-        max_records = int(params.get("max_records", 100))
-        max_records = min(max_records, _MAX_PER_REQUEST)
+        estado      = str(params.get("estado", "09")).zfill(2)
+        keyword     = params.get("keyword", "") or ""
+        max_records = min(int(params.get("max_records", 100)), _MAX_PER_REQUEST)
 
         features = await self._buscar_entidad(token, keyword, estado, max_records)
 
@@ -105,7 +104,10 @@ class DenueConnector(BaseConnector):
     async def _buscar_entidad(
         self, token: str, keyword: str, estado: str, max_records: int
     ) -> List[GeoFeature]:
-        url = f"{_BASE_URL}/BuscarEntidad/{keyword or '.'}/{estado}/0/{max_records}/{token}"
+        """Busca establecimientos en toda una entidad federativa."""
+        if not keyword:
+            return []
+        url = f"{_BASE_URL}/BuscarEntidad/{keyword}/{estado}/0/{max_records}/{token}"
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(url)
             resp.raise_for_status()

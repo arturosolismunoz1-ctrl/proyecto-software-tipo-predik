@@ -19,6 +19,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import List
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -168,15 +169,64 @@ def _flush(db, batch: list) -> None:
     db.execute(stmt)
 
 
+def _encontrar_shapefiles_ageb(directorio: str) -> List[str]:
+    """
+    Auto-descubre shapefiles de AGEBs urbanas en una carpeta MGN.
+    Patrones conocidos:
+      - 00a.shp / 09a.shp  (MGN 2020/2023/2025 nacional y por estado)
+      - conjunto_de_datos/00a.shp  (estructura ZIP nacional)
+    Excluye: *ra.shp (rurales), *mun.shp, *ent.shp, *mza.shp
+    """
+    root = Path(directorio)
+    candidatos = []
+    for shp in root.rglob("*.shp"):
+        nombre = shp.stem.lower()
+        # Incluir solo los que terminan en 'a' (AGEBs urbanas)
+        # Excluir rurales (ra), municipios (mun), entidades (ent), manzanas (mza)
+        if (nombre.endswith("a")
+                and not nombre.endswith("ra")
+                and not any(nombre.endswith(s) for s in ["mun","ent","mza","loc","red"])):
+            candidatos.append(str(shp))
+    return sorted(candidatos)
+
+
+def load_directory(directorio: str, batch_size: int = 500) -> int:
+    """Carga todos los shapefiles de AGEBs urbanas encontrados en el directorio."""
+    shapefiles = _encontrar_shapefiles_ageb(directorio)
+    if not shapefiles:
+        print(f"[mgn] No se encontraron shapefiles de AGEBs en: {directorio}")
+        print("[mgn] Estructura esperada: *a.shp (ej. 00a.shp, 09a.shp)")
+        return 0
+
+    print(f"[mgn] Encontrados {len(shapefiles)} shapefile(s):")
+    for s in shapefiles:
+        print(f"  {s}")
+
+    total = 0
+    for shp_path in shapefiles:
+        print(f"\n[mgn] Procesando: {Path(shp_path).name}")
+        total += load_shapefile(shp_path, batch_size=batch_size)
+
+    print(f"\n[mgn] TOTAL: {total:,} AGEBs cargadas en raw_data.ageb_geometries")
+    return total
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Carga MGN shapefile de AGEBs → PostgreSQL")
-    parser.add_argument("--shapefile", required=True, help="Ruta al .shp (ej. data/mgn/09a.shp)")
-    parser.add_argument("--batch", type=int, default=500, help="Tamaño del batch de inserción (default: 500)")
-    parser.add_argument("--entidad", default=None, help="Filtra solo esta clave de entidad (ej. 09)")
+    parser = argparse.ArgumentParser(description="Carga MGN shapefile de AGEBs -> PostgreSQL")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--shapefile", help="Ruta a un .shp especifico (ej. data/mgn/09a.shp)")
+    group.add_argument("--dir", help="Directorio MGN — auto-descubre todos los *a.shp")
+    parser.add_argument("--batch", type=int, default=500, help="Batch de insercion (default: 500)")
+    parser.add_argument("--entidad", default=None, help="Filtra entidad (ej. 09). Solo con --shapefile")
     args = parser.parse_args()
 
-    if not os.path.exists(args.shapefile):
-        print(f"ERROR: No se encuentra el archivo: {args.shapefile}")
-        sys.exit(1)
-
-    load_shapefile(args.shapefile, batch_size=args.batch, entidad_filter=args.entidad)
+    if args.shapefile:
+        if not os.path.exists(args.shapefile):
+            print(f"ERROR: No se encuentra: {args.shapefile}")
+            sys.exit(1)
+        load_shapefile(args.shapefile, batch_size=args.batch, entidad_filter=args.entidad)
+    else:
+        if not os.path.isdir(args.dir):
+            print(f"ERROR: No es un directorio: {args.dir}")
+            sys.exit(1)
+        load_directory(args.dir, batch_size=args.batch)
