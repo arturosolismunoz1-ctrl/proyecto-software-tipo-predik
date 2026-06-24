@@ -7,10 +7,14 @@ GET /api/v1/catalogo/municipios/{clave_estado}  -> municipios del estado
 Estos datos alimentan los dropdowns del frontend para que el usuario
 seleccione estado -> municipio antes de lanzar una busqueda.
 """
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import func, text
+from sqlalchemy.orm import Session
+
+from app.deps import get_db
 
 router = APIRouter()
 
@@ -25,6 +29,18 @@ class Municipio(BaseModel):
     clave: str          # "039"
     nombre: str         # "Guadalajara"
     clave_estado: str   # "14"
+
+
+class MunicipioBbox(BaseModel):
+    nombre: str
+    clave_estado: str
+    clave_mun: str
+    minx: float
+    miny: float
+    maxx: float
+    maxy: float
+    center_lat: float
+    center_lng: float
 
 
 # ── Catálogo estático INEGI ────────────────────────────────────────────────────
@@ -145,3 +161,49 @@ def listar_municipios(clave_estado: str):
         raise HTTPException(status_code=404, detail=f"Estado '{clave_estado}' no encontrado")
     resultado = [m for m in _MUNICIPIOS if m.clave_estado == clave]
     return resultado
+
+
+@router.get(
+    "/municipio-bbox/{clave_estado}/{clave_mun}",
+    response_model=MunicipioBbox,
+    summary="Bounding box de un municipio (desde AGEBs MGN)",
+)
+def municipio_bbox(
+    clave_estado: str,
+    clave_mun: str,
+    db: Session = Depends(get_db),
+):
+    ent = clave_estado.zfill(2)
+    mun = clave_mun.zfill(3)
+
+    row = db.execute(
+        text("""
+            SELECT
+                MAX(nom_mun) AS nombre,
+                ST_XMin(ST_Extent(geom)) AS minx,
+                ST_YMin(ST_Extent(geom)) AS miny,
+                ST_XMax(ST_Extent(geom)) AS maxx,
+                ST_YMax(ST_Extent(geom)) AS maxy
+            FROM raw_data.ageb_geometries
+            WHERE clave_ent = :ent AND clave_mun = :mun
+        """),
+        {"ent": ent, "mun": mun},
+    ).fetchone()
+
+    if not row or row.minx is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No se encontraron AGEBs para estado={ent} municipio={mun}",
+        )
+
+    return MunicipioBbox(
+        nombre=row.nombre or f"{ent}-{mun}",
+        clave_estado=ent,
+        clave_mun=mun,
+        minx=row.minx,
+        miny=row.miny,
+        maxx=row.maxx,
+        maxy=row.maxy,
+        center_lat=(row.miny + row.maxy) / 2,
+        center_lng=(row.minx + row.maxx) / 2,
+    )

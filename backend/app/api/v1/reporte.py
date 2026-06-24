@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.deps import get_db, get_current_user
 from app.rate_limit import check_rate_limit
-from app.services.reporte import generar_reporte
+from app.services.reporte import generar_reporte, preview_reporte
 
 router = APIRouter()
 
@@ -92,6 +92,13 @@ class ReporteRequest(BaseModel):
         default=True,
         description="False para usar datos ya cargados en DB (omite la llamada a INEGI)",
     )
+    nivel_geografico: Literal["ageb", "manzana"] = Field(
+        default="ageb",
+        description=(
+            "ageb: zonas a nivel AGEB (~1km²) con demografía Censo 2020. "
+            "manzana: máxima granularidad (~100m²) con datos de vivienda e infraestructura."
+        ),
+    )
 
 
 # ── Endpoint ───────────────────────────────────────────────────────────────────
@@ -121,6 +128,7 @@ async def generar_reporte_endpoint(
         max_records=request.max_records,
         h3_resolution=request.h3_resolution,
         ejecutar_etl=request.ejecutar_etl,
+        nivel_geografico=request.nivel_geografico,
     )
 
     if request.formato == "kmz":
@@ -137,3 +145,31 @@ async def generar_reporte_endpoint(
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
+
+
+@router.post(
+    "/preview",
+    summary="Preview del reporte en GeoJSON para visualización en mapa",
+    response_description="GeoJSON con zonas coloreadas + puntos + KPIs",
+)
+async def preview_reporte_endpoint(
+    request: ReporteRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    _rl: None = Depends(check_rate_limit),
+):
+    polygon = {"type": request.polygon.type, "coordinates": request.polygon.coordinates}
+    capas = [c.model_dump() for c in request.capas]
+
+    resultado = await preview_reporte(
+        db=db,
+        organization_id=current_user["org_id"],
+        polygon=polygon,
+        capas=capas,
+        clasificacion_hexagonos=request.clasificacion_hexagonos,
+        max_records=request.max_records,
+        h3_resolution=request.h3_resolution,
+        ejecutar_etl=request.ejecutar_etl,
+        nivel_geografico=request.nivel_geografico,
+    )
+    return resultado

@@ -8,8 +8,8 @@ from starlette.requests import Request
 from app.db import SessionLocal
 from app.models.core import QueryLog
 
-# Solo se loguean endpoints de análisis de negocio
-_LOGGED_PREFIXES = ("/api/v1/zona/", "/api/v1/analisis")
+# Solo se loguean endpoints de análisis de negocio (los que consume el rate limiter)
+_LOGGED_PREFIXES = ("/api/v1/zona/", "/api/v1/analisis", "/api/v1/reporte/")
 
 
 class QueryLogMiddleware(BaseHTTPMiddleware):

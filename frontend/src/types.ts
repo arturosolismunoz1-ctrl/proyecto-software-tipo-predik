@@ -8,6 +8,8 @@ export type Clasificacion = 'densidad' | 'oportunidad' | 'poder_adquisitivo'
 
 export type Formato = 'kmz' | 'excel'
 
+export type NivelGeografico = 'ageb' | 'manzana'
+
 export interface Capa {
   id: string
   keyword: string
@@ -21,6 +23,24 @@ export interface EstadoCatalogo {
   clave: string
   nombre: string
   abreviatura: string
+}
+
+export interface MunicipioCatalogo {
+  clave: string
+  nombre: string
+  clave_estado: string
+}
+
+export interface MunicipioBbox {
+  nombre: string
+  clave_estado: string
+  clave_mun: string
+  minx: number
+  miny: number
+  maxx: number
+  maxy: number
+  center_lat: number
+  center_lng: number
 }
 
 export interface GeoJSONGeometry {

@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>predik-geo — Diagrama de Estado del Proyecto</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0f1117;
+    color: #e2e8f0;
+    padding: 24px;
+    min-width: 1100px;
+  }
+
+  /* ─── HEADER ─── */
+  .header {
+    text-align: center;
+    margin-bottom: 32px;
+    padding: 24px;
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border-radius: 12px;
+    border: 1px solid #334155;
+  }
+  .header h1 { font-size: 2rem; color: #38bdf8; letter-spacing: 2px; }
+  .header p  { color: #94a3b8; margin-top: 6px; font-size: 0.95rem; }
+  .badge-pct {
+    display: inline-block;
+    margin-top: 12px;
+    background: #0ea5e9;
+    color: #fff;
+    font-weight: 700;
+    padding: 4px 16px;
+    border-radius: 999px;
+    font-size: 1rem;
+  }
+
+  /* ─── GRID PRINCIPAL ─── */
+  .grid-top {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .grid-bottom {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  /* ─── CARD BASE ─── */
+  .card {
+    background: #1e293b;
+    border-radius: 10px;
+    border: 1px solid #334155;
+    padding: 18px;
+  }
+  .card h2 {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: #64748b;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card h2 .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block; flex-shrink: 0;
+  }
+  .card h2 .dot.green  { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+  .card h2 .dot.yellow { background: #eab308; box-shadow: 0 0 6px #eab308; }
+  .card h2 .dot.red    { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+  .card h2 .dot.blue   { background: #38bdf8; box-shadow: 0 0 6px #38bdf8; }
+  .card h2 .dot.gray   { background: #475569; }
+
+  /* ─── ITEMS DE LISTA ─── */
+  .item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 0.83rem;
+    border-bottom: 1px solid #1e293b80;
+  }
+  .item:last-child { border-bottom: none; }
+  .item .icon { flex-shrink: 0; font-size: 0.9rem; margin-top: 1px; }
+  .item .text { color: #cbd5e1; line-height: 1.4; }
+  .item .text .sub { color: #64748b; font-size: 0.75rem; margin-top: 2px; }
+
+  /* ─── ESTADO DE BD ─── */
+  .db-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    background: #0f172a;
+    font-size: 0.82rem;
+  }
+  .db-row .name  { color: #93c5fd; font-family: monospace; font-size: 0.78rem; }
+  .db-row .count { font-weight: 700; }
+  .db-row.ok    .count { color: #22c55e; }
+  .db-row.warn  .count { color: #eab308; }
+  .db-row.bad   .count { color: #ef4444; }
+  .db-row.empty .count { color: #64748b; }
+  .db-row .badge-cov {
+    font-size: 0.68rem; padding: 2px 8px; border-radius: 999px;
+    font-weight: 600;
+  }
+  .db-row.ok   .badge-cov { background: #14532d; color: #86efac; }
+  .db-row.warn .badge-cov { background: #713f12; color: #fde68a; }
+  .db-row.bad  .badge-cov { background: #7f1d1d; color: #fca5a5; }
+  .db-row.empty .badge-cov { background: #1e293b; color: #475569; }
+
+  /* ─── ENDPOINTS ─── */
+  .ep-group { margin-bottom: 12px; }
+  .ep-group-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #475569;
+    margin-bottom: 5px;
+    padding-left: 4px;
+  }
+  .ep {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    border-radius: 5px;
+    font-size: 0.78rem;
+    margin-bottom: 3px;
+    background: #0f172a;
+  }
+  .ep .method {
+    font-size: 0.65rem; font-weight: 700; padding: 1px 6px;
+    border-radius: 3px; min-width: 34px; text-align: center;
+  }
+  .ep .method.post { background: #065f46; color: #6ee7b7; }
+  .ep .method.get  { background: #1e3a5f; color: #93c5fd; }
+  .ep .method.del  { background: #7f1d1d; color: #fca5a5; }
+  .ep .path { color: #e2e8f0; font-family: monospace; font-size: 0.78rem; }
+  .ep .desc { color: #64748b; font-size: 0.72rem; margin-left: auto; }
+  .ep .status-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  }
+  .ep .status-dot.ok  { background: #22c55e; }
+  .ep .status-dot.warn { background: #eab308; }
+
+  /* ─── ARQUITECTURA VISUAL ─── */
+  .arch-flow {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-bottom: 8px;
+  }
+  .arch-box {
+    flex: 1;
+    padding: 12px 10px;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 0.78rem;
+    position: relative;
+  }
+  .arch-arrow {
+    display: flex;
+    align-items: center;
+    color: #334155;
+    font-size: 1.2rem;
+    padding: 0 2px;
+  }
+  .arch-box .ab-title { font-weight: 700; margin-bottom: 6px; font-size: 0.82rem; }
+  .arch-box .ab-items { color: #94a3b8; font-size: 0.72rem; line-height: 1.7; }
+  .arch-box.browser { background: #1e293b; border: 1px solid #334155; }
+  .arch-box.fe      { background: #0c4a6e; border: 1px solid #0ea5e9; }
+  .arch-box.be      { background: #064e3b; border: 1px solid #10b981; }
+  .arch-box.db      { background: #1e1b4b; border: 1px solid #818cf8; }
+
+  /* ─── ROADMAP ─── */
+  .roadmap { display: flex; gap: 0; }
+  .phase {
+    flex: 1;
+    padding: 14px 10px;
+    border-radius: 0;
+    font-size: 0.78rem;
+    position: relative;
+    min-height: 220px;
+  }
+  .phase:first-child { border-radius: 8px 0 0 8px; }
+  .phase:last-child  { border-radius: 0 8px 8px 0; }
+  .phase + .phase { border-left: 1px solid #0f1117; }
+  .phase .ph-badge {
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 999px;
+    display: inline-block; margin-bottom: 8px;
+  }
+  .phase .ph-title { font-weight: 700; font-size: 0.82rem; margin-bottom: 10px; }
+  .phase .ph-item  {
+    font-size: 0.73rem; color: #94a3b8; margin-bottom: 4px;
+    padding-left: 14px; position: relative; line-height: 1.4;
+  }
+  .phase .ph-item::before {
+    content: ''; position: absolute; left: 2px; top: 6px;
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+  .phase.done   { background: #052e16; }
+  .phase.active { background: #1c1917; border: 1px solid #eab308; }
+  .phase.next   { background: #0c1a2e; }
+  .phase.future { background: #13111a; }
+  .phase.done   .ph-badge  { background: #14532d; color: #86efac; }
+  .phase.active .ph-badge  { background: #78350f; color: #fde68a; }
+  .phase.next   .ph-badge  { background: #1e3a5f; color: #93c5fd; }
+  .phase.future .ph-badge  { background: #1e1b4b; color: #a5b4fc; }
+  .phase.done   .ph-item::before { background: #22c55e; }
+  .phase.active .ph-item::before { background: #eab308; }
+  .phase.next   .ph-item::before { background: #38bdf8; }
+  .phase.future .ph-item::before { background: #475569; }
+
+  /* ─── BLOQUEANTES ─── */
+  .blocker {
+    background: #1c0a0a;
+    border: 1px solid #7f1d1d;
+    border-left: 4px solid #ef4444;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+  }
+  .blocker .bl-title { color: #fca5a5; font-weight: 700; margin-bottom: 4px; }
+  .blocker .bl-fix   { color: #94a3b8; font-size: 0.75rem; font-family: monospace; }
+
+  .warning {
+    background: #1c1100;
+    border: 1px solid #78350f;
+    border-left: 4px solid #eab308;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+  }
+  .warning .wl-title { color: #fde68a; font-weight: 700; margin-bottom: 4px; }
+  .warning .wl-fix   { color: #94a3b8; font-size: 0.75rem; }
+
+  /* ─── STACK TECH ─── */
+  .tech-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .tech-chip {
+    font-size: 0.72rem;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+  }
+  .tc-blue   { background: #1e3a5f; color: #93c5fd; border: 1px solid #1d4ed8; }
+  .tc-green  { background: #14532d; color: #86efac; border: 1px solid #15803d; }
+  .tc-purple { background: #2e1065; color: #c4b5fd; border: 1px solid #7c3aed; }
+  .tc-orange { background: #431407; color: #fdba74; border: 1px solid #c2410c; }
+  .tc-gray   { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+  .tc-teal   { background: #042f2e; color: #5eead4; border: 1px solid #0d9488; }
+
+  /* ─── SECCIÓN DATOS ─── */
+  .data-src {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 8px 10px; border-radius: 6px; margin-bottom: 6px;
+    background: #0f172a; font-size: 0.8rem;
+  }
+  .data-src .ds-icon { font-size: 1.2rem; flex-shrink: 0; }
+  .data-src .ds-body .ds-title { font-weight: 600; color: #e2e8f0; }
+  .data-src .ds-body .ds-sub   { color: #64748b; font-size: 0.73rem; margin-top: 2px; }
+  .data-src .ds-status {
+    margin-left: auto; flex-shrink: 0;
+    font-size: 0.7rem; font-weight: 700; padding: 2px 8px;
+    border-radius: 999px; align-self: center;
+  }
+  .ds-ok   { background: #14532d; color: #86efac; }
+  .ds-warn { background: #713f12; color: #fde68a; }
+  .ds-pend { background: #1e293b; color: #64748b; }
+
+  /* ─── SECTION LABEL ─── */
+  .section-label {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #475569;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #1e293b;
+  }
+
+  /* ─── DEUDA TECNICA ─── */
+  .dt-row {
+    display: flex; gap: 8px; padding: 5px 8px;
+    border-radius: 4px; background: #0f172a;
+    margin-bottom: 4px; font-size: 0.77rem; align-items: center;
+  }
+  .dt-id   { color: #818cf8; font-family: monospace; min-width: 40px; font-size: 0.72rem; }
+  .dt-text { color: #cbd5e1; flex: 1; }
+  .dt-sprint { color: #64748b; font-size: 0.7rem; min-width: 60px; text-align: right; }
+
+  .full-width { grid-column: 1 / -1; }
+
+  hr.sep { border: none; border-top: 1px solid #1e293b; margin: 16px 0; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════ HEADER ═══════════════════ -->
+<div class="header">
+  <h1>⬡ PREDIK-GEO</h1>
+  <p>Plataforma SaaS de Inteligencia Geoespacial — Clon funcional de PREDIK Data-Driven GeoData Intelligence</p>
+  <span class="badge-pct">Avance global: ~82%</span>
+  <span style="margin-left:8px; font-size:0.8rem; color:#64748b;">Última actualización: 2026-06-24</span>
+</div>
+
+<!-- ═══════════════════ FLUJO DE ARQUITECTURA ═══════════════════ -->
+<div class="card" style="margin-bottom:16px;">
+  <h2><span class="dot blue"></span>Arquitectura General — Flujo de Datos</h2>
+  <div class="arch-flow">
+    <div class="arch-box browser">
+      <div class="ab-title">🌐 Navegador</div>
+      <div class="ab-items">localhost:5173<br>React App<br>Leaflet Map</div>
+    </div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-box fe">
+      <div class="ab-title">⚛️ Frontend MVP</div>
+      <div class="ab-items">React 18 + Vite 5<br>TypeScript + Tailwind<br>react-leaflet 4<br>Zustand + JWT<br>leaflet-draw</div>
+    </div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-box be">
+      <div class="ab-title">🐍 Backend FastAPI</div>
+      <div class="ab-items">localhost:8000<br>JWT Auth + CORS<br>Rate Limit (Redis)<br>Query Log Middleware<br>APScheduler</div>
+    </div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-box db">
+      <div class="ab-title">🗄️ PostgreSQL 16</div>
+      <div class="ab-items">PostGIS 3.4<br>H3 v4.2.2<br>Redis 7<br>4 Esquemas<br>~1.6 GB datos</div>
+    </div>
+    <div class="arch-arrow">→</div>
+    <div class="arch-box" style="background:#1a0a2e;border:1px solid #7c3aed;flex:0.8;">
+      <div class="ab-title">☁️ INEGI APIs</div>
+      <div class="ab-items">DENUE API<br>BIE API<br>(token real)</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ ROW 1: BACKEND / FRONTEND / BD ═══════════════════ -->
+<div class="grid-top">
+
+  <!-- BACKEND -->
+  <div class="card">
+    <h2><span class="dot green"></span>Backend — FastAPI ✅ 90%</h2>
+
+    <div class="section-label">Stack técnico</div>
+    <div class="tech-grid" style="margin-bottom:12px;">
+      <span class="tech-chip tc-green">FastAPI 0.x</span>
+      <span class="tech-chip tc-green">Python 3.12</span>
+      <span class="tech-chip tc-purple">SQLAlchemy 2.x</span>
+      <span class="tech-chip tc-blue">Alembic</span>
+      <span class="tech-chip tc-teal">PostGIS 3.4</span>
+      <span class="tech-chip tc-orange">H3 v4.2.2</span>
+      <span class="tech-chip tc-gray">Redis</span>
+      <span class="tech-chip tc-gray">python-jose JWT</span>
+      <span class="tech-chip tc-gray">bcrypt</span>
+      <span class="tech-chip tc-gray">pyshp + shapely</span>
+    </div>
+
+    <div class="section-label">Módulos implementados</div>
+    <div class="item"><span class="icon">✅</span><div class="text">Auth JWT<div class="sub">access 30min · refresh 7 días · bcrypt</div></div></div>
+    <div class="item"><span class="icon">✅</span><div class="text">Rate Limiter (Redis)<div class="sub">RATE_LIMIT_ENABLED — apagado en dev</div></div></div>
+    <div class="item"><span class="icon">✅</span><div class="text">QueryLog Middleware<div class="sub">core.query_log — registra toda petición</div></div></div>
+    <div class="item"><span class="icon">✅</span><div class="text">Servicio de Reportes<div class="sub">KMZ · Excel · preview GeoJSON · AGEBs / H3</div></div></div>
+    <div class="item"><span class="icon">✅</span><div class="text">Servicio BIE<div class="sub">ITAEE · desocupación · empleo IMSS · fallback demo</div></div></div>
+    <div class="item"><span class="icon">✅</span><div class="text">Clasificadores<div class="sub">densidad · oportunidad · poder adquisitivo</div></div></div>
+    <div class="item"><span class="icon">✅</span><div class="text">Connector DENUE + BIE<div class="sub">BaseConnector → GeoFeature · fallback demo</div></div></div>
+    <div class="item"><span class="icon">✅</span><div class="text">49+ tests verdes</div></div>
+    <div class="item"><span class="icon">⚠️</span><div class="text">registry.py: health check en import time<div class="sub">DT-04 — ralentiza startup</div></div></div>
+    <div class="item"><span class="icon">⚠️</span><div class="text">reporte.py: except Exception: pass<div class="sub">Errores silenciosos — fix en Sprint 0.2</div></div></div>
+
+    <hr class="sep">
+    <div class="section-label">Migraciones Alembic</div>
+    <div class="item"><span class="icon">✅</span><div class="text"><code style="font-size:0.75rem;color:#93c5fd;">0001</code> schemas + extensiones + tablas core</div></div>
+    <div class="item"><span class="icon">✅</span><div class="text"><code style="font-size:0.75rem;color:#93c5fd;">0002</code> ageb_geometries + ageb_demographics + manzana</div></div>
+    <div class="item"><span class="icon">✅</span><div class="text"><code style="font-size:0.75rem;color:#93c5fd;">0003</code> cube.population_density_h3</div></div>
+    <div class="item"><span class="icon">✅</span><div class="text"><code style="font-size:0.75rem;color:#93c5fd;">0004</code> raw_data.bie_indicadores</div></div>
+    <div class="item"><span class="icon">⚠️</span><div class="text"><code style="font-size:0.75rem;color:#fde68a;">0005</code> cvegeo_9 — <strong style="color:#fde68a;">PENDIENTE APLICAR</strong><div class="sub">alembic upgrade head — fix del JOIN</div></div></div>
+  </div>
+
+  <!-- FRONTEND -->
+  <div class="card">
+    <h2><span class="dot green"></span>Frontend — MVP React-Leaflet ✅</h2>
+
+    <div class="section-label">Stack técnico (MVP actual)</div>
+    <div class="tech-grid" style="margin-bottom:12px;">
+      <span class="tech-chip tc-blue">React 18</span>
+      <span class="tech-chip tc-blue">Vite 5</span>
+      <span class="tech-chip tc-purple">TypeScript</span>
+      <span class="tech-chip tc-teal">Tailwind CSS</span>
+      <span class="tech-chip tc-green">react-leaflet 4</span>
+      <span class="tech-chip tc-orange">leaflet-draw</span>
+      <span class="tech-chip tc-gray">Zustand</span>
+    </div>
+
+    <div class="section-label">Páginas</div>
+    <div class="item"><span class="icon">✅</span><div class="text">LoginPage<div class="sub">Doble panel — branding izq / form der — estilo enterprise</div></div></div>
+    <div class="item"><span class="icon">✅</span><div class="text">MapPage<div class="sub">Mapa CartoDB Positron · sidebar 3 pasos · flujo completo</div></div></div>
+
+    <div class="section-label" style="margin-top:10px;">Componentes</div>
+    <div class="item"><span class="icon">✅</span><div class="text">ResultsOverlay<div class="sub">Polígonos AGEB/H3 + markers DENUE · popups · fitBounds</div></div></div>
+    <div class="item"><span class="icon">✅</span><div class="text">KPIPanel<div class="sub">Panel derecho 320px · toggles visibilidad por capa · top 5</div></div></div>
+    <div class="item"><span class="icon">✅</span><div class="text">AdminPanel<div class="sub">Estado BD · indicadores salud · comandos ETL copiables</div></div></div>
+    <div class="item"><span class="icon">✅</span><div class="text">EconomicContextWidget<div class="sub">BIE INEGI · ITAEE · desocupación · empleo · badge Demo/Real</div></div></div>
+
+    <div class="section-label" style="margin-top:10px;">Flujo de uso</div>
+    <div style="background:#0f172a; border-radius:6px; padding:10px 12px; font-size:0.77rem; color:#94a3b8; line-height:2;">
+      <span style="color:#38bdf8;">1.</span> Login → JWT guardado en localStorage<br>
+      <span style="color:#38bdf8;">2.</span> Seleccionar estado → BIE widget aparece<br>
+      <span style="color:#38bdf8;">3.</span> Dibujar polígono <strong>o</strong> seleccionar municipio<br>
+      <span style="color:#38bdf8;">4.</span> Configurar capas (keyword · color · icono)<br>
+      <span style="color:#38bdf8;">5.</span> "Analizar" → POST /reporte/preview → zonas en mapa<br>
+      <span style="color:#38bdf8;">6.</span> POST /reporte/generar → descarga KMZ/Excel<br>
+    </div>
+
+    <div class="section-label" style="margin-top:10px;">Pendientes del MVP actual</div>
+    <div class="item"><span class="icon">❌</span><div class="text">Selector Estado/Municipio con dropdowns<div class="sub">Actualmente solo dibuja polígono a mano</div></div></div>
+    <div class="item"><span class="icon">🔲</span><div class="text">Frontend Enterprise (Fase 1)<div class="sub">MapLibre GL + Deck.gl + shadcn/ui — ver roadmap</div></div></div>
+  </div>
+
+  <!-- BASE DE DATOS -->
+  <div class="card">
+    <h2><span class="dot blue"></span>Base de Datos — Estado Actual</h2>
+
+    <div class="section-label">Esquemas PostgreSQL</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:12px;">
+      <div style="background:#0f172a;border-radius:6px;padding:8px;font-size:0.75rem;">
+        <div style="color:#93c5fd;font-weight:700;">core</div>
+        <div style="color:#64748b;margin-top:2px;">Multi-tenancy<br>users · orgs · JWT log</div>
+      </div>
+      <div style="background:#0f172a;border-radius:6px;padding:8px;font-size:0.75rem;">
+        <div style="color:#86efac;font-weight:700;">raw_data</div>
+        <div style="color:#64748b;margin-top:2px;">DENUE · MGN · Censo<br>BIE series históricas</div>
+      </div>
+      <div style="background:#0f172a;border-radius:6px;padding:8px;font-size:0.75rem;">
+        <div style="color:#c4b5fd;font-weight:700;">cube</div>
+        <div style="color:#64748b;margin-top:2px;">Agr. H3<br>densidad comercial</div>
+      </div>
+      <div style="background:#0f172a;border-radius:6px;padding:8px;font-size:0.75rem;">
+        <div style="color:#fdba74;font-weight:700;">analytics</div>
+        <div style="color:#64748b;margin-top:2px;">Resultados guardados<br>historial análisis</div>
+      </div>
+    </div>
+
+    <div class="section-label">Población de tablas</div>
+    <div class="db-row ok">
+      <span class="name">ageb_geometries</span>
+      <span class="count">82,283</span>
+      <span class="badge-cov">32 estados ✅</span>
+    </div>
+    <div class="db-row warn">
+      <span class="name">ageb_demographics</span>
+      <span class="count">66,750</span>
+      <span class="badge-cov">32 estados ✅</span>
+    </div>
+    <div class="db-row warn">
+      <span class="name">denue_establishments</span>
+      <span class="count">~1.4M</span>
+      <span class="badge-cov">15/32 ⚠️</span>
+    </div>
+    <div class="db-row ok">
+      <span class="name">manzana_vivienda</span>
+      <span class="count">534,577</span>
+      <span class="badge-cov">9/32 ⚠️</span>
+    </div>
+    <div class="db-row ok">
+      <span class="name">bie_indicadores</span>
+      <span class="count">38,752</span>
+      <span class="badge-cov">series completas ✅</span>
+    </div>
+    <div class="db-row ok">
+      <span class="name">commercial_density_h3</span>
+      <span class="count">62,249</span>
+      <span class="badge-cov">H3-9 res ✅</span>
+    </div>
+    <div class="db-row empty">
+      <span class="name">population_density_h3</span>
+      <span class="count">0</span>
+      <span class="badge-cov">sin ETL ❌</span>
+    </div>
+    <div class="db-row bad">
+      <span class="name">JOIN geom ↔ demog</span>
+      <span class="count">267</span>
+      <span class="badge-cov">esperado ~50k ❌</span>
+    </div>
+
+    <hr class="sep">
+    <div class="section-label">Indexación</div>
+    <div class="item"><span class="icon">✅</span><div class="text">GIST en ageb_geometries.geom</div></div>
+    <div class="item"><span class="icon">✅</span><div class="text">GIST en denue_establishments.geom</div></div>
+    <div class="item"><span class="icon">⚠️</span><div class="text">B-tree en ageb_geometries.cvegeo_9<div class="sub">Índice en migración 0005 — pendiente aplicar</div></div></div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════ ROW 2: ENDPOINTS / DATOS / BLOQUEANTES ═══════════════════ -->
+<div class="grid-bottom">
+
+  <!-- BLOQUEANTES Y DEUDA TÉCNICA -->
+  <div class="card">
+    <h2><span class="dot red"></span>Bloqueantes y Deuda Técnica</h2>
+
+    <div class="section-label">🔴 BLOQUEANTE crítico</div>
+    <div class="blocker">
+      <div class="bl-title">❌ JOIN geometría ↔ demografía = 267 (esperado ~50,000)</div>
+      <div style="color:#fca5a5;font-size:0.78rem;margin-bottom:4px;">
+        Causa: migración <code>0005_add_cvegeo9_index</code> nunca aplicada a la BD real.<br>
+        La columna <code>cvegeo_9</code> existe en el ORM pero NO en PostgreSQL.
+      </div>
+      <div class="bl-fix">Fix: alembic -c backend/alembic.ini upgrade head</div>
+    </div>
+
+    <div class="section-label" style="margin-top:8px;">⚠️ Advertencias</div>
+    <div class="warning">
+      <div class="wl-title">⚠️ DENUE parcial — 15 de 32 estados</div>
+      <div class="wl-fix">Faltan estados 16–32. ETL tarda ~6-10h en hardware local.</div>
+    </div>
+    <div class="warning">
+      <div class="wl-title">⚠️ except Exception: pass en reporte.py</div>
+      <div class="wl-fix">Los errores de generación de reportes se tragan silenciosamente.</div>
+    </div>
+    <div class="warning">
+      <div class="wl-title">⚠️ Health check HTTP al importar registry.py</div>
+      <div class="wl-fix">DT-04 — Llama a la API de INEGI al arrancar el servidor.</div>
+    </div>
+    <div class="warning">
+      <div class="wl-title">⚠️ Rate limit: /preview + /generar = 2 cuotas por análisis</div>
+      <div class="wl-fix">El usuario consume doble cuota. Revisar antes de activar rate limiting en prod.</div>
+    </div>
+
+    <hr class="sep">
+    <div class="section-label">Deuda técnica catalogada</div>
+    <div class="dt-row"><span class="dt-id">DT-01</span><span class="dt-text">Isócronas reales (manejo)</span><span class="dt-sprint">Sprint 3.1</span></div>
+    <div class="dt-row"><span class="dt-id">DT-02</span><span class="dt-text">Datos movilidad (Veraset/INEGI)</span><span class="dt-sprint">Fase 3+</span></div>
+    <div class="dt-row"><span class="dt-id">DT-03</span><span class="dt-text">Cache Redis para queries AGEBs</span><span class="dt-sprint">Sprint 0.2</span></div>
+    <div class="dt-row"><span class="dt-id">DT-04</span><span class="dt-text">Lazy health check en registry.py</span><span class="dt-sprint">Sprint 0.2</span></div>
+    <div class="dt-row"><span class="dt-id">DT-05</span><span class="dt-text">Scoring IA / ML real</span><span class="dt-sprint">Post Fase 2</span></div>
+    <div class="dt-row"><span class="dt-id">DT-06</span><span class="dt-text">Tests integración frontend</span><span class="dt-sprint">Sprint 1.2</span></div>
+    <div class="dt-row"><span class="dt-id">DT-07</span><span class="dt-text">Monitoreo prod (Sentry + Uptime)</span><span class="dt-sprint">Sprint 5.1</span></div>
+    <div class="dt-row"><span class="dt-id">DT-08</span><span class="dt-text">Auditoría seguridad JWT</span><span class="dt-sprint">Sprint 5.2</span></div>
+  </div>
+
+  <!-- ENDPOINTS API -->
+  <div class="card">
+    <h2><span class="dot green"></span>API REST — Endpoints Disponibles</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px;">
+
+      <div>
+        <div class="ep-group">
+          <div class="ep-group-title">🔐 /auth — Autenticación</div>
+          <div class="ep"><span class="method post">POST</span><span class="path">/auth/login</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method post">POST</span><span class="path">/auth/refresh</span><span class="status-dot ok"></span></div>
+        </div>
+        <div class="ep-group">
+          <div class="ep-group-title">🗺️ /zona — Análisis de zona</div>
+          <div class="ep"><span class="method post">POST</span><span class="path">/zona/concentracion-comercial</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method post">POST</span><span class="path">/zona/densidad-poblacional</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method post">POST</span><span class="path">/zona/establecimientos</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/zona/analisis/{id}</span><span class="status-dot ok"></span></div>
+        </div>
+        <div class="ep-group">
+          <div class="ep-group-title">📋 /analisis — Historial</div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/analisis/</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/analisis/{id}</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/analisis/comparar</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method del">DEL</span><span class="path">/analisis/{id}</span><span class="status-dot ok"></span></div>
+        </div>
+        <div class="ep-group">
+          <div class="ep-group-title">🗂️ /catalogo — Geografía</div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/catalogo/estados</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/catalogo/municipios/{clave}</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/catalogo/municipio-bbox/...</span><span class="status-dot ok"></span></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="ep-group">
+          <div class="ep-group-title">📊 /reporte — Reportes Geoespaciales</div>
+          <div class="ep"><span class="method post">POST</span><span class="path">/reporte/generar</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method post">POST</span><span class="path">/reporte/preview</span><span class="status-dot ok"></span></div>
+        </div>
+        <div class="ep-group">
+          <div class="ep-group-title">📈 /bie — Indicadores Económicos</div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/bie/indicadores</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/bie/estado/{clave}</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/bie/estado/{clave}/{indicador}</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/bie/stats</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method post">POST</span><span class="path">/bie/sync/{clave}</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method post">POST</span><span class="path">/bie/sync</span><span class="status-dot ok"></span></div>
+        </div>
+        <div class="ep-group">
+          <div class="ep-group-title">🔧 /admin — Administración (rol admin)</div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/admin/bd-status</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/admin/conectores</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/admin/conectores/{nombre}/health</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method post">POST</span><span class="path">/admin/conectores/{nombre}/sync</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method post">POST</span><span class="path">/admin/etl/{source}/run</span><span class="status-dot ok"></span></div>
+          <div class="ep"><span class="method post">POST</span><span class="path">/admin/etl/maestro/run</span><span class="status-dot ok"></span></div>
+        </div>
+        <div class="ep-group">
+          <div class="ep-group-title">💓 Health</div>
+          <div class="ep"><span class="method get">GET</span><span class="path">/health</span><span class="status-dot ok"></span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <hr class="sep">
+    <div class="section-label">Fuentes de datos externas</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+      <div class="data-src">
+        <span class="ds-icon">🏪</span>
+        <div class="ds-body">
+          <div class="ds-title">INEGI DENUE API</div>
+          <div class="ds-sub">BuscarEntidad · 2,500 regs/llamada · 20 sectores SCIAN</div>
+        </div>
+        <span class="ds-status ds-warn">15/32 estados</span>
+      </div>
+      <div class="data-src">
+        <span class="ds-icon">🗺️</span>
+        <div class="ds-body">
+          <div class="ds-title">MGN 2025 (shapefiles)</div>
+          <div class="ds-sub">mg_2025_integrado.zip · 00a.shp · 245 MB</div>
+        </div>
+        <span class="ds-status ds-ok">✅ Cargado</span>
+      </div>
+      <div class="data-src">
+        <span class="ds-icon">👥</span>
+        <div class="ds-body">
+          <div class="ds-title">Censo 2020 INEGI</div>
+          <div class="ds-sub">RESAGEBURB_NNCSV20.csv · 32 archivos</div>
+        </div>
+        <span class="ds-status ds-ok">✅ 32 estados</span>
+      </div>
+      <div class="data-src">
+        <span class="ds-icon">📉</span>
+        <div class="ds-body">
+          <div class="ds-title">BIE INEGI</div>
+          <div class="ds-sub">ITAEE · Desocupación · Empleo IMSS</div>
+        </div>
+        <span class="ds-status ds-ok">✅ Histórico</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════ ROADMAP ═══════════════════ -->
+<div class="card" style="margin-bottom:16px;">
+  <h2><span class="dot yellow"></span>Roadmap de Sprints — Estado y Plan</h2>
+  <div class="roadmap">
+
+    <div class="phase done">
+      <span class="ph-badge">✅ Hecho</span>
+      <div class="ph-title">FASE 0-PRE<br>Base técnica</div>
+      <div class="ph-item">Infra Docker + PostGIS + H3</div>
+      <div class="ph-item">Migraciones Alembic 0001-0004</div>
+      <div class="ph-item">Auth JWT + bcrypt</div>
+      <div class="ph-item">ETL DENUE real (15 estados)</div>
+      <div class="ph-item">ETL MGN 2025 completo</div>
+      <div class="ph-item">ETL Censo 2020 (32 estados)</div>
+      <div class="ph-item">Reportes KMZ + Excel</div>
+      <div class="ph-item">BIE + clasificadores</div>
+      <div class="ph-item">Frontend MVP (Leaflet)</div>
+      <div class="ph-item">49+ tests backend</div>
+    </div>
+
+    <div class="phase active">
+      <span class="ph-badge">🔥 Ahora</span>
+      <div class="ph-title">FASE 0<br>Cierre técnico</div>
+      <div class="ph-item">⚠️ Sprint 0.1: aplicar migración 0005</div>
+      <div class="ph-item">Verificar JOIN &gt;50k matches</div>
+      <div class="ph-item">Reporte prueba Mérida con AGEBs reales</div>
+      <div class="ph-item">Reporte CDMX escala grande</div>
+      <div class="ph-item">⚠️ Sprint 0.2: DENUE estados 16-32</div>
+      <div class="ph-item">Fix except: pass → logger.exception</div>
+      <div class="ph-item">Lazy health check registry.py</div>
+      <div class="ph-item" style="color:#ef4444;">BLOQUEANTE: alembic upgrade head</div>
+    </div>
+
+    <div class="phase next">
+      <span class="ph-badge">▶ Próximo</span>
+      <div class="ph-title">FASE 1<br>Frontend Enterprise</div>
+      <div class="ph-item">MapLibre GL JS + react-map-gl</div>
+      <div class="ph-item">Deck.gl (GeoJsonLayer, ScatterplotLayer)</div>
+      <div class="ph-item">shadcn/ui dark mode</div>
+      <div class="ph-item">TanStack Query</div>
+      <div class="ph-item">Apache ECharts + Framer Motion</div>
+      <div class="ph-item">TopBar + LeftNav + RightPanel</div>
+      <div class="ph-item">Selector Estado/Municipio dropdown</div>
+      <div class="ph-item">Heatmap Deck.gl toggle</div>
+      <div class="ph-item">Sprint 1.1 → 1.2 → 1.3</div>
+    </div>
+
+    <div class="phase future">
+      <span class="ph-badge">◻ Pendiente</span>
+      <div class="ph-title">FASE 2<br>Site Selector</div>
+      <div class="ph-item">Score potencial 0-100 por AGEB</div>
+      <div class="ph-item">tabla analytics.ageb_score</div>
+      <div class="ph-item">Heatmap de score</div>
+      <div class="ph-item">Comparación de 2 zonas</div>
+      <div class="ph-item">Cuadrantes semafóricos</div>
+      <div class="ph-item">Análisis de canibalización</div>
+      <div class="ph-item">Export PDF ejecutivo</div>
+      <div class="ph-item">🏁 Demo a clientes (fin F2)</div>
+    </div>
+
+    <div class="phase future">
+      <span class="ph-badge">◻ Pendiente</span>
+      <div class="ph-title">FASE 3<br>POI Explorer</div>
+      <div class="ph-item">Click en POI → panel detalle</div>
+      <div class="ph-item">Zona de influencia radio configurable</div>
+      <div class="ph-item">Listado de competidores en radio</div>
+      <div class="ph-item">Perfil de audiencia (NSE, edad, género)</div>
+      <div class="ph-item">Score de atractivo del POI</div>
+      <div class="ph-item">Comparar 2 POIs</div>
+      <div class="ph-item">GET /poi/{clee}/zona-influencia</div>
+    </div>
+
+    <div class="phase future">
+      <span class="ph-badge">◻ Pendiente</span>
+      <div class="ph-title">FASE 4<br>Reportes Ejecutivos</div>
+      <div class="ph-item">Botón "Generar Reporte" global</div>
+      <div class="ph-item">PDF portada + mapa + tablas + gráficas</div>
+      <div class="ph-item">Export PNG viewport del mapa</div>
+      <div class="ph-item">Excel mejorado con gráficas</div>
+      <div class="ph-item">Historial 20 reportes descargables</div>
+    </div>
+
+    <div class="phase future">
+      <span class="ph-badge">◻ Pendiente</span>
+      <div class="ph-title">FASE 5<br>SaaS / Producción</div>
+      <div class="ph-item">Render.com (backend FastAPI)</div>
+      <div class="ph-item">Vercel (frontend React)</div>
+      <div class="ph-item">Supabase / Render PostgreSQL</div>
+      <div class="ph-item">GitHub Actions CI/CD</div>
+      <div class="ph-item">Multi-tenant + planes SaaS</div>
+      <div class="ph-item">Rate limiting activado</div>
+      <div class="ph-item">Panel admin de organizaciones</div>
+      <div class="ph-item">🏁 MVP en producción (fin F5)</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════ KPIs DEL PROYECTO ═══════════════════ -->
+<div class="card">
+  <h2><span class="dot blue"></span>KPIs de seguimiento del proyecto</h2>
+  <div style="overflow-x:auto;">
+    <table style="width:100%;border-collapse:collapse;font-size:0.8rem;">
+      <thead>
+        <tr style="background:#0f172a;color:#64748b;text-align:left;">
+          <th style="padding:8px 12px;border-bottom:1px solid #334155;">KPI</th>
+          <th style="padding:8px 12px;border-bottom:1px solid #334155;">Actual (hoy)</th>
+          <th style="padding:8px 12px;border-bottom:1px solid #334155;">Meta Sprint 0</th>
+          <th style="padding:8px 12px;border-bottom:1px solid #334155;">Meta demo (F2)</th>
+          <th style="padding:8px 12px;border-bottom:1px solid #334155;">Meta MVP prod (F5)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid #1e293b;">
+          <td style="padding:7px 12px;color:#94a3b8;">AGEBs con geom + demografía</td>
+          <td style="padding:7px 12px;color:#ef4444;">267 ❌</td>
+          <td style="padding:7px 12px;color:#86efac;">&gt;50,000</td>
+          <td style="padding:7px 12px;color:#86efac;">&gt;50,000</td>
+          <td style="padding:7px 12px;color:#86efac;">&gt;50,000</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1e293b;background:#0f172a20;">
+          <td style="padding:7px 12px;color:#94a3b8;">Establecimientos DENUE en BD</td>
+          <td style="padding:7px 12px;color:#fde68a;">~1.4M ⚠️</td>
+          <td style="padding:7px 12px;color:#86efac;">&gt;600k</td>
+          <td style="padding:7px 12px;color:#86efac;">&gt;1M</td>
+          <td style="padding:7px 12px;color:#86efac;">&gt;2M</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1e293b;">
+          <td style="padding:7px 12px;color:#94a3b8;">Tiempo generación de reporte</td>
+          <td style="padding:7px 12px;color:#fde68a;">3–8 min ⚠️</td>
+          <td style="padding:7px 12px;color:#86efac;">&lt;60 seg</td>
+          <td style="padding:7px 12px;color:#86efac;">&lt;30 seg</td>
+          <td style="padding:7px 12px;color:#86efac;">&lt;15 seg</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1e293b;background:#0f172a20;">
+          <td style="padding:7px 12px;color:#94a3b8;">Módulos funcionales</td>
+          <td style="padding:7px 12px;color:#fde68a;">1 (Reportes MVP)</td>
+          <td style="padding:7px 12px;color:#86efac;">1</td>
+          <td style="padding:7px 12px;color:#86efac;">2 (+ Site Selector)</td>
+          <td style="padding:7px 12px;color:#86efac;">4 (todos)</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1e293b;">
+          <td style="padding:7px 12px;color:#94a3b8;">Tests backend</td>
+          <td style="padding:7px 12px;color:#86efac;">49+ ✅</td>
+          <td style="padding:7px 12px;color:#86efac;">&gt;49</td>
+          <td style="padding:7px 12px;color:#86efac;">&gt;80</td>
+          <td style="padding:7px 12px;color:#86efac;">&gt;120</td>
+        </tr>
+        <tr style="background:#0f172a20;">
+          <td style="padding:7px 12px;color:#94a3b8;">Cobertura DENUE (estados)</td>
+          <td style="padding:7px 12px;color:#fde68a;">15/32 ⚠️</td>
+          <td style="padding:7px 12px;color:#86efac;">16</td>
+          <td style="padding:7px 12px;color:#86efac;">16</td>
+          <td style="padding:7px 12px;color:#86efac;">32</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <hr class="sep">
+  <div style="display:flex;gap:16px;flex-wrap:wrap;">
+    <div style="background:#0f172a;border-radius:6px;padding:10px 16px;font-size:0.78rem;flex:1;min-width:200px;">
+      <div style="color:#64748b;margin-bottom:4px;">Duración estimada</div>
+      <div style="color:#e2e8f0;font-weight:700;">~3 meses</div>
+      <div style="color:#64748b;font-size:0.72rem;">sesiones ~2h, 4-5 días/semana</div>
+    </div>
+    <div style="background:#0f172a;border-radius:6px;padding:10px 16px;font-size:0.78rem;flex:1;min-width:200px;">
+      <div style="color:#64748b;margin-bottom:4px;">Credenciales dev</div>
+      <div style="color:#e2e8f0;font-family:monospace;font-size:0.75rem;">admin@predik.local / dev_password_admin</div>
+    </div>
+    <div style="background:#0f172a;border-radius:6px;padding:10px 16px;font-size:0.78rem;flex:1;min-width:200px;">
+      <div style="color:#64748b;margin-bottom:4px;">URLs de desarrollo</div>
+      <div style="color:#38bdf8;font-family:monospace;font-size:0.75rem;">Frontend: localhost:5173<br>Backend:  localhost:8000</div>
+    </div>
+    <div style="background:#0f172a;border-radius:6px;padding:10px 16px;font-size:0.78rem;flex:1;min-width:200px;">
+      <div style="color:#64748b;margin-bottom:4px;">Rama activa</div>
+      <div style="color:#e2e8f0;font-family:monospace;font-size:0.75rem;">feature/deuda-tecnica-previa-etl</div>
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center;margin-top:20px;color:#334155;font-size:0.72rem;">
+  predik-geo · Generado 2026-06-24 · docs/diagrama-estado-proyecto.html
+</div>
+
+</body>
+</html>

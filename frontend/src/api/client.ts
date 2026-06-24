@@ -1,4 +1,6 @@
-const BASE = '/api/v1'
+// En producción, VITE_API_URL apunta al backend desplegado.
+// En desarrollo, el proxy de Vite redirige /api → localhost:8000.
+const BASE = (import.meta.env.VITE_API_URL ?? '') + '/api/v1'
 
 const TOKEN_KEY = 'predik_token'
 
@@ -48,6 +50,18 @@ export async function apiEstados() {
   return res.json()
 }
 
+export async function apiMunicipios(claveEstado: string) {
+  const res = await req(`/catalogo/municipios/${claveEstado}`)
+  if (!res.ok) throw new Error('Error cargando municipios')
+  return res.json()
+}
+
+export async function apiMunicipioBbox(claveEstado: string, claveMun: string) {
+  const res = await req(`/catalogo/municipio-bbox/${claveEstado}/${claveMun}`)
+  if (!res.ok) throw new Error('No se encontró el municipio en la BD')
+  return res.json()
+}
+
 // ── Reporte ───────────────────────────────────────────────────────────────────
 
 export async function apiGenerarReporte(payload: object): Promise<{ blob: Blob; filename: string }> {
@@ -68,10 +82,120 @@ export async function apiGenerarReporte(payload: object): Promise<{ blob: Blob; 
   return { blob: await res.blob(), filename }
 }
 
+// ── Preview GeoJSON ───────────────────────────────────────────────────────────
+
+export interface PuntoEstablecimiento {
+  nombre: string
+  clase_actividad: string
+  colonia: string
+  municipio: string
+  lat: number
+  lon: number
+}
+
+export interface CapaPreview {
+  label: string
+  keyword: string
+  color: string
+  icon: 'circle' | 'star'
+  estado: string
+  cantidad: number
+  puntos: PuntoEstablecimiento[]
+}
+
+export interface PreviewData {
+  zonas: GeoJSONFeature[]
+  capas: CapaPreview[]
+  resumen: {
+    total_establecimientos: number
+    total_zonas: number
+    usa_agebs: boolean
+    usa_manzanas: boolean
+    nivel_geografico: 'ageb' | 'manzana'
+    clasificacion: string
+    poblacion_alcanzada: number
+    zonas_premium: number
+  }
+}
+
+interface GeoJSONFeature {
+  type: 'Feature'
+  geometry: object
+  properties: {
+    label: string
+    hex_color: string
+    cantidad: number
+    intensidad: number
+    nivel?: string
+    tipo_zona?: 'ageb' | 'manzana' | 'h3'
+    // AGEB
+    cvegeo?: string
+    nom_mun?: string
+    pobtot?: number
+    graproes?: number
+    h3_index?: string
+    // Manzana
+    vivtot?: number
+    vivpar_hab?: number
+    con_agua?: number
+    con_dren?: number
+    con_luz?: number
+  }
+}
+
+export async function apiPreviewReporte(payload: object): Promise<PreviewData> {
+  const res = await req('/reporte/preview', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Error ${res.status}: ${text.slice(0, 300)}`)
+  }
+  return res.json()
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export async function apiBdStatus() {
   const res = await req('/admin/bd-status')
   if (!res.ok) throw new Error('Error consultando BD status')
+  return res.json()
+}
+
+export async function apiTriggerEtl(payload: object): Promise<{ message: string }> {
+  const res = await req('/admin/etl/trigger', { method: 'POST', body: JSON.stringify(payload) })
+  if (!res.ok) throw new Error('Error lanzando ETL')
+  return res.json()
+}
+
+// ── Historial ─────────────────────────────────────────────────────────────────
+
+export async function apiHistorial(): Promise<object[]> {
+  const res = await req('/analisis?limit=20')
+  if (!res.ok) return []
+  return res.json()
+}
+
+// ── BIE (indicadores macroeconómicos) ─────────────────────────────────────────
+
+export interface BieIndicadorValor {
+  valor: number | null
+  nombre: string
+  unidad: string
+  periodo?: string
+  interpretacion: string
+}
+
+export interface BieResumen {
+  fuente: string
+  estado_clave: string
+  advertencia?: string
+  indicadores: Record<string, BieIndicadorValor>
+}
+
+export async function apiBieResumen(claveEstado: string): Promise<BieResumen> {
+  const res = await req(`/bie/estado/${claveEstado}`)
+  if (!res.ok) throw new Error('Error cargando indicadores BIE')
   return res.json()
 }

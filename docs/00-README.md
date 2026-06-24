@@ -15,6 +15,8 @@ Plataforma de inteligencia geoespacial y geomarketing (clon funcional inspirado 
 | [07-control-de-versiones-y-ambientes.md](./07-control-de-versiones-y-ambientes.md) | Git, ramas, CI/CD, Dev/QA/Prod |
 | [08-logging-y-observabilidad.md](./08-logging-y-observabilidad.md) | Qué se registra, cómo y dónde |
 | [09-data-lake-y-data-mart.md](./09-data-lake-y-data-mart.md) | Estrategia de datos a largo plazo |
+| [10-bitacora-de-avance.md](./10-bitacora-de-avance.md) | Registro de sesiones, decisiones y cambios del proyecto |
+| [11-plan-sprints.md](./11-plan-sprints.md) | Plan de sprints ágil — fases, DoD, KPIs y dependencias |
 
 ## Convenciones de este repositorio
 
@@ -31,10 +33,13 @@ Plataforma de inteligencia geoespacial y geomarketing (clon funcional inspirado 
 | Infraestructura (Docker + PostgreSQL + PostGIS + H3 + Redis) | ✅ Completo |
 | Base de datos (migración + seed dev) | ✅ Completo |
 | Autenticación JWT (login, refresh, middleware) | ✅ Completo |
-| Módulo: Concentración Comercial — backend (endpoints + tests) | ⚠️ Completo con datos demo — falta ETL real |
-| Módulo: Concentración Comercial — ETL datos INEGI DENUE | 🔲 Pendiente |
-| Módulo: Concentración Comercial — Frontend | 🔲 Pendiente |
-| Módulo: Densidad Poblacional | 🔲 Pendiente |
-| Módulo: Afluencia Vehicular | 🔲 Pendiente (depende de proveedor externo) |
-| Módulo: Afluencia de Personas / POI Explorer | 🔲 Pendiente (depende de proveedor de movilidad) |
-| Módulo: Site Selector (IA) | 🔲 Pendiente (depende de los anteriores) |
+| Backend FastAPI + Auth JWT + Rate Limiter | ✅ 90% completo |
+| ETL DENUE real (INEGI) — ~528k establecimientos | ✅ Parcial (6 estados) |
+| ETL MGN 2025 + Censo 2020 (AGEBs + demografía) | ✅ Cargado — JOIN fix pendiente aplicar |
+| BIE INEGI (indicadores económicos por estado) | ✅ Completo con fallback demo |
+| Frontend MVP (react-leaflet) — reportes, mapa, capas, BIE | ✅ Funcional |
+| Frontend Enterprise (MapLibre + Deck.gl + shadcn/ui) | 🔲 Sprint 1 — próximo |
+| Site Selector (módulo core del SaaS) | 🔲 Sprint 2 |
+| POI Explorer (análisis de audiencias) | 🔲 Sprint 3 |
+| Reportes Ejecutivos PDF premium | 🔲 Sprint 4 |
+| Despliegue cloud (Render + Vercel) + Multi-tenant | 🔲 Sprint 5 |

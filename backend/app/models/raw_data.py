@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Column, Date, DateTime, Float, ForeignKey, Integer, String, JSON
+from sqlalchemy import BigInteger, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text, JSON
 from sqlalchemy.orm import relationship
 from geoalchemy2 import Geometry
 
@@ -38,6 +38,7 @@ class AgebGeometry(Base):
     clave_mun = Column(String(3))
     cve_loc = Column(String(4))
     cve_ageb = Column(String(4))
+    cvegeo_9 = Column(String(9))
     nom_ent = Column(String(100))
     nom_mun = Column(String(150))
     nom_loc = Column(String(250))
@@ -67,6 +68,27 @@ class AgebDemographics(Base):
     psinder = Column(Integer())
     pder_ss = Column(Integer())
     indicadores = Column(JSON)
+    loaded_at = Column(DateTime(timezone=True))
+
+
+class BieIndicador(Base):
+    """Serie de tiempo de un indicador macroeconómico del BIE (INEGI)."""
+
+    __tablename__ = "bie_indicadores"
+    __table_args__ = {"schema": "raw_data"}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    indicador_id = Column(String(20), nullable=False)
+    nombre = Column(String(200))
+    descripcion = Column(Text())
+    unidad = Column(String(100))
+    frecuencia = Column(String(20))
+    area_clave = Column(String(10), nullable=False)
+    estado_clave = Column(String(2))
+    periodo = Column(String(10), nullable=False)
+    periodo_fecha = Column(Date())
+    valor = Column(Float())
+    fuente = Column(String(50), default="BIE_INEGI")
     loaded_at = Column(DateTime(timezone=True))
 
 

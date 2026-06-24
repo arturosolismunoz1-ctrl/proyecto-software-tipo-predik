@@ -246,11 +246,299 @@ Archivos creados en `frontend/`:
 
 ---
 
-## Próximos pasos (por orden de prioridad)
+---
 
-- [ ] **Cargar MGN 2025** — cuando termine la descarga (~2.7 GB): `python backend/scripts/load_marco_geoestadistico.py --dir data/mgn/`
-- [ ] **Relanzar ETL DENUE maestro** — `python backend/scripts/etl_maestro.py --solo-denue`
-- [ ] **Prueba funcional con AGEBs reales** — repetir Ecatepec/Guadalajara; los polígonos deben ser AGEBs INEGI reales.
-- [ ] **Frontend MVP** — React + Vite + Leaflet: login, mapa, dropdowns estado/municipio, búsqueda multi-capa, descarga KMZ/Excel.
-- [ ] **`.env.example`** — documentar variables: `DATABASE_URL`, `JWT_SECRET`, `INEGI_DENUE_TOKEN`, `REDIS_URL`.
-- [ ] **CI/CD** — GitHub Actions que corra `make test` en cada PR.
+## 2026-06-23 (sesión 5 — MGN 2025 completo, mapa interactivo, KPIs, Admin)
+
+### ✅ MGN 2025 descargado — 32 ZIPs de estados + ZIP integrado nacional
+
+- Los 32 ZIPs (`01_aguascalientes.zip` … `32_zacatecas.zip`) + `mg_2025_integrado.zip` (245 MB) movidos a `data/mgn/`.
+- El ZIP integrado contiene `00a.shp` — AGEBs urbanas nacionales (todos los estados en un solo shapefile).
+- `data/censo_2020/` ya tiene todos los 32 CSVs demográficos (`RESAGEBURB_01CSV20.csv` … `RESAGEBURB_32CSV20.csv`).
+
+### ✅ load_marco_geoestadistico.py — soporte nativo de ZIPs
+
+- Nueva función `load_from_zip(zip_path)` — extrae el shapefile de AGEBs a un directorio temporal, carga, limpia.
+- Nueva función `load_all_zips(directorio)` — procesa todos los ZIPs estado por estado en orden (01→32).
+- Auto-detección de encoding desde `.cpg`; fallback a `utf-8 → latin-1 → cp1252`.
+- Nuevo flag `--zip` y `--zip-dir` en CLI.
+
+### ✅ etl_mgn_maestro.py — orquestador completo MGN + Censo 2020
+
+Archivo: `backend/scripts/etl_mgn_maestro.py`
+
+Pasos que ejecuta:
+1. **Geometrías MGN** — extrae `00a.shp` del ZIP integrado → carga todos los AGEBs de 32 estados
+2. **Demografía Censo 2020** — lee todos los CSVs de `data/censo_2020/` → carga `ageb_demographics`
+3. **Índices PostGIS** — `GIST(geom)` en `ageb_geometries`, índice en `ageb_demographics(cvegeo)`
+4. Reporte final con totales y count de AGEBs con geometría + demografía disponibles
+
+Uso:
+```bash
+# Carga completa (MGN + Censo) — puede tardar 15-45 min según hardware
+python backend/scripts/etl_mgn_maestro.py
+
+# Solo geometrías (si ya tienes demografía)
+python backend/scripts/etl_mgn_maestro.py --solo-mgn
+
+# Solo demografía (si ya tienes geometrías)
+python backend/scripts/etl_mgn_maestro.py --solo-censo
+
+# Solo un estado (para pruebas rápidas)
+python backend/scripts/etl_mgn_maestro.py --entidad 31
+```
+
+### ✅ Endpoint POST /reporte/preview — GeoJSON para visualización en mapa
+
+- `backend/app/services/reporte.py` — nueva función `preview_reporte()`:
+  - Misma lógica que `generar_reporte()` pero devuelve `dict` con GeoJSON en lugar de bytes KMZ/Excel
+  - Convierte colores KML (AABBGGRR) a hex CSS (#RRGGBB) con `_kml_to_hex()`
+  - Construye features GeoJSON para AGEBs (usa campo `geom`) y H3 (calcula boundary vía `h3.cell_to_boundary`)
+  - Incluye `resumen` con KPIs: total establecimientos, total zonas, población alcanzada, zonas premium
+- `backend/app/api/v1/reporte.py` — endpoint `POST /api/v1/reporte/preview`
+  - Mismo schema `ReporteRequest` que `/generar`
+  - Devuelve JSON: `{zonas: GeoJSONFeature[], capas: CapaPreview[], resumen: KPIs}`
+
+### ✅ Frontend — resultados en el mapa
+
+**Nuevo componente `frontend/src/components/ResultsOverlay.tsx`:**
+- Hook `useMap()` + `useEffect` para gestionar capas Leaflet
+- Polígonos de zonas coloreados con `L.geoJSON()` — opacidad proporcional a intensidad
+- Puntos de establecimientos con `L.circleMarker()` — color por capa, radio mayor para estrellas
+- Popup al click con nombre, AGEB/H3, población, escolaridad
+- `map.fitBounds()` automático al primer resultado
+
+### ✅ Frontend — Panel KPIs deslizable
+
+**Nuevo componente `frontend/src/components/KPIPanel.tsx`:**
+- Panel derecho 320px que aparece/desaparece con transición CSS
+- KPI cards: total establecimientos, zonas analizadas, población alcanzada, zonas premium
+- Barra de progreso por capa (cantidad relativa al máximo)
+- Distribución por nivel (PREMIUM/MEDIO_ALTO/etc.) con badges de colores PREDIK
+- Top 5 zonas por concentración de establecimientos
+
+### ✅ Frontend — Panel Admin
+
+**Nuevo componente `frontend/src/components/AdminPanel.tsx`:**
+- Modal centrado con estado de BD (ageb_geometries, ageb_demographics, denue_total)
+- Indicadores de salud: verde (>50k), amarillo (parcial), rojo (vacío)
+- Comandos ETL copiables para correr desde terminal
+- Botón Admin en header de MapPage
+
+### ✅ MapPage.tsx — flujo rediseñado: Preview → Analizar → Descargar
+
+Nuevo flujo al hacer clic en "Analizar y Descargar":
+1. `POST /reporte/preview` con `ejecutar_etl: true` — corre ETL, devuelve GeoJSON
+2. Los resultados aparecen en el mapa inmediatamente (zonas coloreadas + puntos)
+3. Panel KPIs se abre automáticamente a la derecha
+4. `POST /reporte/generar` con `ejecutar_etl: false` — genera archivo sin re-correr ETL
+5. El archivo se descarga automáticamente al navegador
+
+### ✅ Variables de entorno para producción documentadas
+
+- `frontend/.env.example` — incluye `VITE_API_URL` para backend en producción
+- `.env.example` — sección `Cloud/Producción` con ejemplos de `DATABASE_URL` en la nube
+- `frontend/src/api/client.ts` — `BASE` usa `VITE_API_URL ?? ''` para ser agnóstico al ambiente
+
+### Estado de datos al cierre de sesión 5:
+| Tabla | Registros | Estado |
+|---|---|---|
+| `raw_data.ageb_demographics` | 128,626 | ✅ 32 estados |
+| `raw_data.ageb_geometries` | 0 | ⏳ ETL pendiente — correr `etl_mgn_maestro.py` |
+| `raw_data.denue_establishments` | ~528,808 | ✅ Parcial |
+| `cube.commercial_density_h3` | ~294 | ✅ Del ejercicio Mérida |
+
+### Próximo paso inmediato — ejecutar ETL MGN
+```bash
+# En terminal con servidor apagado (consume más RAM):
+cd C:\Users\Arturo Solis Munoz\Desktop\predik-geo
+python backend/scripts/etl_mgn_maestro.py
+# Cuando termine (15-45 min), levantar servidor:
+uvicorn backend.app.main:app --reload
+```
+
+---
+
+## 2026-06-23 (sesión 6 — ETL completo MGN + Censo 2020; bloqueo JOIN activo)
+
+### ✅ ETL Fase 1 — AGEBs Geometrías MGN 2025: COMPLETO
+
+- `python backend/scripts/etl_mgn_maestro.py --solo-mgn`
+- Fuente: `data/mgn/mg_2025_integrado.zip` → extrae `00a.shp` (nacional)
+- **82,283 AGEBs urbanas** cargadas en `raw_data.ageb_geometries`
+- Bug resuelto en Windows: `pyshp.Reader` mantenía handles de archivo abiertos al limpiar `TemporaryDirectory`. Fix: `reader.close()` explícito en bloque `finally` + `ignore_cleanup_errors=True`.
+- Tiempo de carga: ~18 min en hardware local
+
+### ✅ ETL Fase 2 — Demografía Censo 2020: cargado (bloqueo JOIN pendiente)
+
+**3 bugs corregidos en `etl_mgn_maestro.py`:**
+
+1. **CVEGEO 13→9 chars** — El ETL construía `ent+mun+loc+ageb` (13 chars) pero el shapefile MGN 2025 usa `ent+mun+ageb` (9 chars) en algunos registros. Corregido: `cvegeo = ent + mun + ageb`.
+
+2. **ON CONFLICT duplicado dentro del mismo batch** — Cuando múltiples localidades comparten el mismo `ent+mun+ageb`, PostgreSQL fallaba con `CardinalityViolation`. Fix: acumular todas las filas del CSV en un `dict` indexado por cvegeo (agregando enteros con suma, flotantes con promedio ponderado por población) antes de hacer el INSERT. Eliminado el batch de 1,000 filas durante lectura; ahora se hace después sobre el dict ya deduplicado.
+
+3. **UTF-8 BOM en cabeceras CSV** — Los CSVs de INEGI tienen `﻿` (BOM) al inicio, lo que hacía que la primera columna se llamara `ï»¿ENTIDAD` en lugar de `ENTIDAD`. `row.get("ENTIDAD")` devolvía `None` → `ent = "00"` → CVEGEOs inválidos para 31 de 32 estados. Fix: `encoding="utf-8-sig"` como primera opción en el bucle de encodings (strip automático de BOM).
+
+**Resultado:** 66,750 AGEBs únicas en `raw_data.ageb_demographics`.
+
+### ⚠️ BLOQUEO ACTIVO — JOIN geometría + demografía = 267 matches (esperado ~50,000)
+
+**Diagnóstico:**
+- `ageb_geometries` mezcla dos formatos de CVEGEO:
+  - 9 chars: `140701467` (`ent+mun+ageb`) — 17,475 registros
+  - 13 chars: `050300001522A` (`ent+mun+loc+ageb`) — 64,808 registros
+- `ageb_demographics` usa solo 9 chars (correcto): `010010127` — 66,750 registros
+- El JOIN solo puede hacer match con los 17,475 de 9 chars, y de esos solo 267 coinciden
+- Raíz probable: el shapefile MGN 2025 usa CVEGEO = `ent+mun+loc+ageb` (13 chars) como estándar, y solo algunos registros tienen 9 chars. La demografía usa `ent+mun+ageb` (9 chars) sin localidad. El puente entre ambos formatos no está implementado.
+
+**Próximo diagnóstico (siguiente sesión):**
+```sql
+-- Ver estructura del CVEGEO en geometrías (desglosar campos individuales)
+SELECT cvegeo, clave_ent, clave_mun, cve_loc, cve_ageb
+FROM raw_data.ageb_geometries
+WHERE LENGTH(cvegeo) = 13
+LIMIT 5;
+-- Derivar cvegeo_9 = clave_ent + clave_mun + cve_ageb y hacer JOIN con demographics
+```
+El fix probablemente es: agregar columna `cvegeo_9` en `ageb_geometries` = `ent+mun+ageb` y hacer el JOIN por esa columna.
+
+### Estado de datos al cierre de sesión 6:
+| Tabla | Registros | Estado |
+|---|---|---|
+| `raw_data.ageb_geometries` | **82,283** | ✅ Cargado (mezcla 9+13 chars en CVEGEO) |
+| `raw_data.ageb_demographics` | **66,750** | ✅ Cargado (9 chars, formato correcto) |
+| `raw_data.denue_establishments` | ~528,808 | ✅ Parcial |
+| JOIN geometría + demografía | **267** | ❌ Bloqueo — esperado ~50,000 |
+
+---
+
+## 2026-06-23 (sesión 7 — Frontend: contexto económico BIE + visibilidad de capas)
+
+### ✅ Widget de contexto económico BIE integrado al sidebar
+
+**Nuevo componente `frontend/src/components/EconomicContextWidget.tsx`:**
+- Aparece automáticamente en el Paso 1 cuando el usuario selecciona un estado
+- Consume `GET /api/v1/bie/estado/{clave}` — indicadores macroeconómicos INEGI BIE
+- Muestra 4 KPIs en grid 2×2: Crecimiento económico (ITAEE), Desocupación, Empleo formal, PEA
+- Colores semafóricos: verde (bueno) / ámbar (moderado) / rojo (crítico)
+- Badge `Demo` cuando los datos son simulados; badge `BIE INEGI` cuando son reales
+- Colapsable con animación; tooltip con interpretación al hacer hover sobre cada tile
+- Fuente de datos indicada al pie: "Fuente: INEGI BIE"
+
+**Integración en `MapPage.tsx`:** aparece entre los dropdowns de municipio y el divisor "o dibuja en el mapa".
+
+### ✅ Nuevos tipos BIE en `api/client.ts`
+
+- Interfaces `BieIndicadorValor` y `BieResumen` con tipos correctos para la respuesta del backend
+- Función `apiBieResumen(claveEstado)` que consume el endpoint `/bie/estado/{clave}`
+
+### ✅ Toggles de visibilidad de capas en el mapa
+
+**`frontend/src/components/KPIPanel.tsx`:**
+- Ícono ojo (visible/oculto) por cada capa en la sección "Establecimientos por capa"
+- Al ocultar una capa: barra de progreso en gris, opacidad 40%, marcadores desaparecen del mapa
+- Props nuevas: `visibleCapas?: Record<string, boolean>` y `onToggleCapa?: (keyword) => void`
+
+**`frontend/src/components/ResultsOverlay.tsx`:**
+- Nueva prop `visibleCapas?: Record<string, boolean>`
+- Aplica filtro `if (visibleCapas && visibleCapas[capa.keyword] === false) return` antes de renderizar markers
+- `visibleCapas` incluido en el `useEffect` dependency array para re-renderizar al togglear
+
+**`frontend/src/pages/MapPage.tsx`:**
+- Estado `visibleCapas: Record<string, boolean>` — inicializado a `{keyword: true}` por cada capa cuando llegan resultados del preview
+- Handler `toggleCapa(keyword)` con `useCallback`
+- Props `visibleCapas` y `onToggleCapa` pasadas a `KPIPanel`; `visibleCapas` a `ResultsOverlay`
+
+---
+
+## 2026-06-23 (sesión 8 — Fix bloqueo JOIN AGEB geometrías + demografía)
+
+### ✅ Diagnóstico definitivo del bloqueo JOIN
+
+**Raíz del problema:** La columna `cvegeo_9` existe en el modelo SQLAlchemy (`raw_data.py`) pero **no existe en la base de datos real** — nunca fue incluida en ninguna migración Alembic. Adicionalmente, el script de carga nunca calculaba ni guardaba el valor.
+
+Consecuencia:
+- `query_agebs_en_poligono()` falla silenciosamente (columna inexistente → excepción capturada)
+- El sistema cae a hexágonos H3 como fallback — nunca usa AGEBs reales
+
+### ✅ Fix implementado — 3 archivos modificados
+
+**1. Nueva migración `0005_add_cvegeo9_index.py`:**
+- `ALTER TABLE ageb_geometries ADD COLUMN cvegeo_9 VARCHAR(9)`
+- `UPDATE` que puebla la columna para los 82,283 registros ya cargados:
+  `cvegeo_9 = LPAD(clave_ent,2,'0') || LPAD(clave_mun,3,'0') || LPAD(cve_ageb,4,'0')`
+- `CREATE INDEX idx_ageb_cvegeo9` para acelerar el JOIN
+
+**2. `backend/scripts/load_marco_geoestadistico.py`:**
+- Calcula `cvegeo_9` en cada registro antes del INSERT
+- Lo incluye en el dict del batch y en el `on_conflict_do_update`
+
+**3. Ningún cambio necesario en `reporte.py`:** el JOIN ya estaba correcto:
+  `.outerjoin(AgebDemographics, AgebGeometry.cvegeo_9 == AgebDemographics.cvegeo)`
+
+### ⚙️ Comando para aplicar el fix
+
+```bash
+cd C:\Users\Arturo Solis Munoz\Desktop\predik-geo
+alembic -c backend/alembic.ini upgrade head
+```
+
+Esto agrega la columna y puebla los 82,283 registros en segundos. No requiere re-correr el ETL.
+
+### ✅ Revisión de seguridad y riesgos — 4 problemas encontrados y 3 corregidos
+
+**Bug 1 — CRÍTICO corregido: `clasificar_por_oportunidad` crasheaba con AGEBs reales**
+- `backend/app/services/reporte.py`
+- Accedía a `h["h3_index"]` pero los dicts de AGEB tienen `cvegeo`, no `h3_index` → `KeyError`
+- Fix: cuando `h3_index` es `None`, calcula el centroide del polígono AGEB (parse de GeoJSON) y lo convierte a celda H3 para la comparación. Compatible con H3 nativo y AGEBs.
+
+**Bug 2 — ENGAÑOSO corregido: `reporte_final()` reportaba el JOIN incorrecto**
+- `backend/scripts/etl_mgn_maestro.py` línea 296
+- Usaba `ON g.cvegeo = d.cvegeo` → seguiría mostrando 267 aunque el fix del cvegeo_9 funcionara
+- Fix: `ON g.cvegeo_9 = d.cvegeo` (consistente con la query del servicio de reportes)
+
+**Bug 3 — FUNCIONAL corregido: endpoints de reporte fuera del logging de QueryLog**
+- `backend/app/middleware.py`
+- `_LOGGED_PREFIXES` no incluía `/api/v1/reporte/` → rate limiter siempre veía count=0 aunque `RATE_LIMIT_ENABLED=true`
+- Fix: agregado `/api/v1/reporte/` al prefijo → los reportes ahora se loguean y cuentan para el rate limit
+
+**Riesgo 4 — BAJO (sin fix inmediato): health check HTTP en tiempo de importación**
+- `backend/app/connectors/registry.py` llama `health_check()` (HTTP a INEGI) al importar el módulo
+- Si INEGI está lento al arrancar el servidor, el startup puede tardar varios segundos extra
+- No crashea, pero es frágil en producción; solución futura: lazy health check en un endpoint admin
+
+**Nota sobre rate limiting:** `/preview` y `/generar` generan 2 entradas en QueryLog por análisis (una cada una). Cuando se active el rate limit en producción, una sola acción del usuario consumirá 2 cuotas. Diseño a revisar antes de activar `RATE_LIMIT_ENABLED=true`.
+
+---
+
+## Próximos pasos (actualizado al cierre sesión 8)
+
+**PRIORIDAD 1 — Aplicar el fix del JOIN y verificar**
+- Correr `alembic -c backend/alembic.ini upgrade head`
+- Verificar con query SQL:
+  ```sql
+  SELECT COUNT(*) FROM raw_data.ageb_geometries WHERE cvegeo_9 IS NOT NULL;
+  -- Esperado: ~82,000
+  SELECT COUNT(*) 
+  FROM raw_data.ageb_geometries g
+  JOIN raw_data.ageb_demographics d ON g.cvegeo_9 = d.cvegeo;
+  -- Esperado: >50,000
+  ```
+- Generar un reporte de prueba en Mérida o CDMX y confirmar que usa AGEBs (no H3)
+
+**PRIORIDAD 2 — Frontend Enterprise (visión a mediano plazo)**
+- Migración a MapLibre GL + Deck.gl (capas más potentes, heatmaps nativos)
+- Módulos: Site Selector, POI Explorer, Interactive Maps, Reportes Ejecutivos
+- Stack objetivo: shadcn/ui, TanStack Query, Apache ECharts, Framer Motion
+- Ver `SUPER_PROMPT_ENTERPRISE.md` para la visión completa
+
+**PRIORIDAD 3 — Logging en `reporte.py`**
+- Reemplazar `except Exception: pass` por `logger.exception(...)` para no ocultar errores
+
+**PRIORIDAD 4 — Completar DENUE**
+- Correr `python backend/scripts/etl_maestro.py --solo-denue` para agregar estados faltantes
+
+**PAUSED**
+- Historial de análisis en UI
+- CI/CD (GitHub Actions)
+- SaaS migration (Supabase + Render + Vercel)

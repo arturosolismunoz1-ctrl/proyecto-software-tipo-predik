@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from app.connectors.base import BaseConnector
 from app.connectors.inegi.denue import DenueConnector
+from app.connectors.inegi.bie import BIEConnector
 
 
 @dataclass
@@ -49,3 +50,4 @@ async def sync_connector(name: str, polygon: Optional[Dict[str, Any]] = None) ->
 
 
 register_connector(DenueConnector())
+register_connector(BIEConnector())

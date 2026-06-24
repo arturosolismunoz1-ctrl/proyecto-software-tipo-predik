@@ -13,10 +13,13 @@ competencia entre cadenas, etc.
 """
 import io
 import json
+import logging
 import zipfile
 from datetime import date
 from typing import Any, Dict, List, Literal, Optional
 from xml.sax.saxutils import escape
+
+logger = logging.getLogger(__name__)
 
 import h3
 import openpyxl
@@ -27,7 +30,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.etl.denue import DenueETL
-from app.models.raw_data import AgebDemographics, AgebGeometry, DenueEstablishment
+from app.models.raw_data import AgebDemographics, AgebGeometry, DenueEstablishment, ManzanaVivienda
 from app.services.zona_analysis import calculate_commercial_concentration
 
 
@@ -178,6 +181,17 @@ def query_agebs_en_poligono(
     """
     polygon_json = json.dumps(polygon)
 
+    # Subquery: sólo establecimientos dentro del polígono para reducir el join espacial
+    poly_geom = geo_funcs.ST_GeomFromGeoJSON(polygon_json)
+    denue_en_zona = (
+        select(DenueEstablishment.id, DenueEstablishment.geom)
+        .where(
+            DenueEstablishment.geom.isnot(None),
+            geo_funcs.ST_Intersects(DenueEstablishment.geom, poly_geom),
+        )
+        .subquery()
+    )
+
     stmt = (
         select(
             AgebGeometry.cvegeo,
@@ -190,17 +204,17 @@ def query_agebs_en_poligono(
             AgebDemographics.p_15a64,
             AgebDemographics.p_65ymas,
             AgebDemographics.graproes,
-            func.count(DenueEstablishment.id).label("num_establecimientos"),
+            func.count(denue_en_zona.c.id).label("num_establecimientos"),
         )
-        .outerjoin(AgebDemographics, AgebGeometry.cvegeo == AgebDemographics.cvegeo)
+        .outerjoin(AgebDemographics, AgebGeometry.cvegeo_9 == AgebDemographics.cvegeo)
         .outerjoin(
-            DenueEstablishment,
-            geo_funcs.ST_Within(DenueEstablishment.geom, AgebGeometry.geom),
+            denue_en_zona,
+            geo_funcs.ST_Within(denue_en_zona.c.geom, AgebGeometry.geom),
         )
         .where(
             geo_funcs.ST_Intersects(
                 AgebGeometry.geom,
-                geo_funcs.ST_GeomFromGeoJSON(polygon_json),
+                poly_geom,
             )
         )
         .group_by(
@@ -245,6 +259,127 @@ def _normalizar_intensidad(agebs: List[Dict]) -> List[Dict]:
     return agebs
 
 
+# ── 3b. Consulta Manzanas reales ──────────────────────────────────────────────
+
+def query_manzanas_en_poligono(
+    db: Session,
+    polygon: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """
+    Consulta manzanas que intersectan el polígono.
+    Retorna [] si manzana_vivienda está vacía o no hay datos en esa zona.
+    """
+    polygon_json = json.dumps(polygon)
+    poly_geom = geo_funcs.ST_GeomFromGeoJSON(polygon_json)
+
+    denue_en_zona = (
+        select(DenueEstablishment.id, DenueEstablishment.geom)
+        .where(
+            DenueEstablishment.geom.isnot(None),
+            geo_funcs.ST_Intersects(DenueEstablishment.geom, poly_geom),
+        )
+        .subquery()
+    )
+
+    stmt = (
+        select(
+            ManzanaVivienda.cvegeo,
+            ManzanaVivienda.clave_ent,
+            ManzanaVivienda.clave_mun,
+            ManzanaVivienda.vivtot,
+            ManzanaVivienda.vivpar_hab,
+            ManzanaVivienda.con_agua,
+            ManzanaVivienda.con_dren,
+            ManzanaVivienda.con_luz,
+            ManzanaVivienda.indicadores,
+            func.ST_AsGeoJSON(ManzanaVivienda.geom).label("geom"),
+            func.count(denue_en_zona.c.id).label("num_establecimientos"),
+        )
+        .outerjoin(
+            denue_en_zona,
+            geo_funcs.ST_Within(denue_en_zona.c.geom, ManzanaVivienda.geom),
+        )
+        .where(geo_funcs.ST_Intersects(ManzanaVivienda.geom, poly_geom))
+        .group_by(
+            ManzanaVivienda.cvegeo,
+            ManzanaVivienda.clave_ent,
+            ManzanaVivienda.clave_mun,
+            ManzanaVivienda.vivtot,
+            ManzanaVivienda.vivpar_hab,
+            ManzanaVivienda.con_agua,
+            ManzanaVivienda.con_dren,
+            ManzanaVivienda.con_luz,
+            ManzanaVivienda.indicadores,
+            ManzanaVivienda.geom,
+        )
+    )
+
+    rows = db.execute(stmt).all()
+    return [
+        {
+            "cvegeo":     r.cvegeo,
+            "clave_ent":  r.clave_ent or "",
+            "clave_mun":  r.clave_mun or "",
+            "geom":       r.geom or "",
+            "vivtot":     r.vivtot or 0,
+            "vivpar_hab": r.vivpar_hab or 0,
+            "con_agua":   r.con_agua or 0,
+            "con_dren":   r.con_dren or 0,
+            "con_luz":    r.con_luz or 0,
+            "graproes":   float((r.indicadores or {}).get("GRAPROES", 0) or 0),
+            "cantidad":   int(r.num_establecimientos),
+            "intensidad": 0.0,
+        }
+        for r in rows
+    ]
+
+
+# ── 3c. Clasificacion por infraestructura (manzanas) ─────────────────────────
+
+_INF_FILL = {
+    "ALTA": "CC005500",   # verde oscuro
+    "MEDIA": "CC00AAFF",  # ámbar
+    "BAJA": "CC0000BB",   # rojo
+    "NULA": "CC555555",   # gris oscuro
+}
+
+_INF_LABEL = {
+    "ALTA":  "Infraestructura alta",
+    "MEDIA": "Infraestructura media",
+    "BAJA":  "Infraestructura baja",
+    "NULA":  "Sin datos de vivienda",
+}
+
+
+def clasificar_manzanas_por_infraestructura(manzanas: List[Dict]) -> List[Dict]:
+    """
+    Clasifica manzanas por calidad de servicios básicos de vivienda.
+    Combina % de viviendas con agua, drenaje y electricidad.
+    Es un proxy de NSE más granular que escolaridad a nivel AGEB.
+    """
+    result = []
+    for m in manzanas:
+        viv = m.get("vivpar_hab") or 0
+        if viv == 0:
+            nivel = "NULA"
+            pct = 0.0
+        else:
+            agua = (m.get("con_agua") or 0) / viv
+            dren = (m.get("con_dren") or 0) / viv
+            luz  = (m.get("con_luz")  or 0) / viv
+            pct  = (agua + dren + luz) / 3.0 * 100.0
+            if pct >= 90:
+                nivel = "ALTA"
+            elif pct >= 65:
+                nivel = "MEDIA"
+            else:
+                nivel = "BAJA"
+
+        label = _INF_LABEL[nivel] + (f" ({pct:.0f}%)" if nivel != "NULA" else "")
+        result.append({**m, "color": _INF_FILL[nivel], "label": label, "nivel": nivel})
+    return result
+
+
 # ── 3. Clasificacion de hexagonos ──────────────────────────────────────────────
 
 def clasificar_por_densidad(hexagonos: List[Dict]) -> List[Dict]:
@@ -274,16 +409,19 @@ def clasificar_por_oportunidad(
     h3_resolution: int,
 ) -> List[Dict]:
     """
-    Clasifica hexagonos segun presencia de cadenas y densidad comercial.
+    Clasifica zonas segun presencia de cadenas y densidad comercial.
+    Soporta tanto hexagonos H3 como AGEBs reales del MGN.
 
     Logica:
-      - Celda con TODAS las cadenas presentes -> SATURADA
-      - Celda con ALGUNAS cadenas             -> MEDIA (zona activa, con competencia)
-      - Celda sin cadenas + alta densidad     -> ALTA OPORTUNIDAD
-      - Celda sin cadenas + media densidad    -> MEDIA-ALTA
-      - Celda sin cadenas + baja densidad     -> BAJA
+      - Zona con TODAS las cadenas presentes -> SATURADA
+      - Zona con ALGUNAS cadenas             -> MEDIA (zona activa, con competencia)
+      - Zona sin cadenas + alta densidad     -> ALTA OPORTUNIDAD
+      - Zona sin cadenas + media densidad    -> MEDIA-ALTA
+      - Zona sin cadenas + baja densidad     -> BAJA
+
+    Para AGEBs (sin h3_index): aproxima la celda H3 del centroide del polígono.
     """
-    # Para cada capa, calcular en que celdas H3 cae
+    # Para cada capa, calcular en qué celdas H3 caen los puntos
     capa_cells: Dict[str, set] = {}
     for capa in capas_con_puntos:
         cells = {
@@ -295,17 +433,36 @@ def clasificar_por_oportunidad(
 
     n_capas = len(capas_con_puntos)
 
-    # Quantiles de intensidad para rangos relativos
-    intensidades = sorted(h["intensidad"] for h in hexagonos)
+    intensidades = sorted(h_["intensidad"] for h_ in hexagonos)
     n = len(intensidades)
-    q33 = intensidades[n // 3] if n > 2 else 0
+    q33 = intensidades[n // 3]     if n > 2 else 0
     q66 = intensidades[2 * n // 3] if n > 2 else 0
 
     result = []
     for h in hexagonos:
-        n_presentes = sum(
-            1 for cells in capa_cells.values()
-            if h["h3_index"] in cells
+        # Determinar celda H3 representativa:
+        # • H3 nativo → usar directamente
+        # • AGEB real → calcular centroide del polígono y convertirlo a H3
+        h3_cell = h.get("h3_index")
+        if h3_cell is None:
+            geom_str = h.get("geom", "")
+            if geom_str:
+                try:
+                    geom = json.loads(geom_str)
+                    ring = (
+                        geom["coordinates"][0][0]
+                        if geom["type"] == "MultiPolygon"
+                        else geom["coordinates"][0]
+                    )
+                    lat_c = sum(c[1] for c in ring) / len(ring)
+                    lng_c = sum(c[0] for c in ring) / len(ring)
+                    h3_cell = h3.latlng_to_cell(lat_c, lng_c, h3_resolution)
+                except Exception:
+                    h3_cell = None
+
+        n_presentes = (
+            sum(1 for cells in capa_cells.values() if h3_cell in cells)
+            if h3_cell else 0
         )
 
         if n_capas > 1 and n_presentes == n_capas:
@@ -625,6 +782,173 @@ def generar_excel(
     return buf.getvalue()
 
 
+# ── Helpers de color ──────────────────────────────────────────────────────────
+
+def _kml_to_hex(kml: str) -> str:
+    """Convierte color KML (AABBGGRR) a CSS hex (#RRGGBB)."""
+    if len(kml) == 8:
+        return f"#{kml[6:8]}{kml[4:6]}{kml[2:4]}"
+    return "#888888"
+
+
+# ── Preview (JSON para visualización en mapa) ──────────────────────────────────
+
+async def preview_reporte(
+    db: Session,
+    organization_id: str,
+    polygon: Dict[str, Any],
+    capas: List[Dict[str, Any]],
+    clasificacion_hexagonos: Literal["densidad", "oportunidad", "poder_adquisitivo"],
+    max_records: int,
+    h3_resolution: int,
+    ejecutar_etl: bool,
+    nivel_geografico: Literal["ageb", "manzana"] = "ageb",
+) -> Dict[str, Any]:
+    """
+    Misma lógica que generar_reporte() pero devuelve GeoJSON + KPIs
+    en lugar de bytes KMZ/Excel. Usado para mostrar resultados en el mapa.
+    """
+    if ejecutar_etl:
+        await run_etl_capas(db, capas, polygon, max_records, h3_resolution)
+
+    hexagonos_raw: List[Dict] = []
+    usa_agebs = False
+    usa_manzanas = False
+
+    if nivel_geografico == "manzana":
+        try:
+            manzanas = query_manzanas_en_poligono(db, polygon)
+            if manzanas:
+                hexagonos_raw = _normalizar_intensidad(manzanas)
+                usa_manzanas = True
+                usa_agebs = True  # reutilizamos flag para "usa zonas reales"
+        except Exception:
+            logger.exception("Error consultando manzanas en polígono")
+
+    if not usa_manzanas:
+        try:
+            agebs = query_agebs_en_poligono(db, polygon)
+            if agebs:
+                hexagonos_raw = _normalizar_intensidad(agebs)
+                usa_agebs = True
+        except Exception:
+            logger.exception("Error consultando AGEBs en polígono")
+
+    if not usa_agebs:
+        try:
+            result = calculate_commercial_concentration(db, organization_id, polygon)
+            hexagonos_raw = result.get("celdas_heatmap", [])
+        except ValueError:
+            pass
+
+    capas_con_puntos = []
+    for capa in capas:
+        puntos = query_puntos_capa(db, polygon, capa["keyword"], capa.get("scian_prefix"))
+        capas_con_puntos.append({**capa, "puntos": puntos})
+
+    if not hexagonos_raw:
+        hexagonos: List[Dict] = []
+    elif usa_manzanas and clasificacion_hexagonos in ("poder_adquisitivo", "densidad"):
+        hexagonos = clasificar_manzanas_por_infraestructura(hexagonos_raw)
+    elif clasificacion_hexagonos == "poder_adquisitivo" and usa_agebs:
+        hexagonos = clasificar_por_poder_adquisitivo(hexagonos_raw)
+    elif clasificacion_hexagonos == "oportunidad" and len(capas_con_puntos) >= 1:
+        hexagonos = clasificar_por_oportunidad(hexagonos_raw, capas_con_puntos, h3_resolution)
+    elif usa_manzanas:
+        hexagonos = clasificar_manzanas_por_infraestructura(hexagonos_raw)
+    else:
+        hexagonos = clasificar_por_densidad(hexagonos_raw)
+
+    # Construir features GeoJSON para zonas
+    zonas: List[Dict] = []
+    for zone in hexagonos:
+        hex_color = _kml_to_hex(zone.get("color", "CC888888"))
+        props = {
+            "label":      zone.get("label", ""),
+            "hex_color":  hex_color,
+            "cantidad":   zone.get("cantidad", 0),
+            "intensidad": round(zone.get("intensidad", 0), 4),
+            "nivel":      zone.get("nivel", ""),
+        }
+        if "cvegeo" in zone and zone["geom"]:
+            props.update({"cvegeo": zone["cvegeo"]})
+            if usa_manzanas:
+                props.update({
+                    "vivtot":     zone.get("vivtot", 0),
+                    "vivpar_hab": zone.get("vivpar_hab", 0),
+                    "con_agua":   zone.get("con_agua", 0),
+                    "con_dren":   zone.get("con_dren", 0),
+                    "con_luz":    zone.get("con_luz", 0),
+                    "graproes":   zone.get("graproes", 0.0),
+                    "tipo_zona":  "manzana",
+                })
+            else:
+                props.update({
+                    "nom_mun":  zone.get("nom_mun", ""),
+                    "pobtot":   zone.get("pobtot", 0),
+                    "graproes": zone.get("graproes", 0.0),
+                    "tipo_zona": "ageb",
+                })
+            try:
+                geom = json.loads(zone["geom"])
+                zonas.append({"type": "Feature", "geometry": geom, "properties": props})
+            except Exception:
+                pass
+        elif "h3_index" in zone:
+            props["h3_index"] = zone["h3_index"]
+            props["tipo_zona"] = "h3"
+            try:
+                boundary = h3.cell_to_boundary(zone["h3_index"])
+                coords = [[lng, lat] for lat, lng in boundary]
+                coords.append(coords[0])
+                geom = {"type": "Polygon", "coordinates": [coords]}
+                zonas.append({"type": "Feature", "geometry": geom, "properties": props})
+            except Exception:
+                pass
+
+    # Resumen KPIs
+    total_establecimientos = sum(len(c["puntos"]) for c in capas_con_puntos)
+    if usa_manzanas:
+        poblacion_total = sum(
+            z.get("properties", {}).get("vivpar_hab", 0) for z in zonas
+        )
+    else:
+        poblacion_total = sum(
+            z.get("properties", {}).get("pobtot", 0)
+            for z in zonas if z.get("properties", {}).get("tipo_zona") == "ageb"
+        )
+    zonas_premium = sum(
+        1 for z in zonas
+        if z.get("properties", {}).get("nivel") in ("PREMIUM", "ALTA")
+    )
+
+    return {
+        "zonas": zonas,
+        "capas": [
+            {
+                "label":    c["label"],
+                "keyword":  c["keyword"],
+                "color":    c["color"],
+                "icon":     c.get("icon", "circle"),
+                "estado":   c["estado"],
+                "cantidad": len(c["puntos"]),
+                "puntos":   c["puntos"],
+            }
+            for c in capas_con_puntos
+        ],
+        "resumen": {
+            "total_establecimientos": total_establecimientos,
+            "total_zonas":            len(hexagonos),
+            "usa_agebs":              usa_agebs,
+            "usa_manzanas":           usa_manzanas,
+            "nivel_geografico":       nivel_geografico,
+            "clasificacion":          clasificacion_hexagonos,
+            "poblacion_alcanzada":    poblacion_total,
+            "zonas_premium":          zonas_premium,
+        },
+    }
+
+
 # ── Funcion principal ──────────────────────────────────────────────────────────
 
 async def generar_reporte(
@@ -638,6 +962,7 @@ async def generar_reporte(
     max_records: int,
     h3_resolution: int,
     ejecutar_etl: bool,
+    nivel_geografico: Literal["ageb", "manzana"] = "ageb",
 ) -> bytes:
     """
     Punto de entrada principal del servicio de reportes.
@@ -653,16 +978,29 @@ async def generar_reporte(
     if ejecutar_etl:
         await run_etl_capas(db, capas, polygon, max_records, h3_resolution)
 
-    # 2. Zonas: intentar AGEBs reales primero, caer en H3 si no hay MGN cargado
+    # 2. Zonas: manzanas → AGEBs → H3 (orden de preferencia por granularidad)
     hexagonos_raw: List[Dict] = []
     usa_agebs = False
-    try:
-        agebs = query_agebs_en_poligono(db, polygon)
-        if agebs:
-            hexagonos_raw = _normalizar_intensidad(agebs)
-            usa_agebs = True
-    except Exception:
-        pass
+    usa_manzanas = False
+
+    if nivel_geografico == "manzana":
+        try:
+            manzanas = query_manzanas_en_poligono(db, polygon)
+            if manzanas:
+                hexagonos_raw = _normalizar_intensidad(manzanas)
+                usa_manzanas = True
+                usa_agebs = True
+        except Exception:
+            logger.exception("Error consultando manzanas en polígono")
+
+    if not usa_manzanas:
+        try:
+            agebs = query_agebs_en_poligono(db, polygon)
+            if agebs:
+                hexagonos_raw = _normalizar_intensidad(agebs)
+                usa_agebs = True
+        except Exception:
+            logger.exception("Error consultando AGEBs en polígono")
 
     if not usa_agebs:
         try:
@@ -682,13 +1020,17 @@ async def generar_reporte(
         )
         capas_con_puntos.append({**capa, "puntos": puntos})
 
-    # 4. Clasificar hexagonos / AGEBs
+    # 4. Clasificar hexagonos / AGEBs / manzanas
     if not hexagonos_raw:
         hexagonos: List[Dict] = []
+    elif usa_manzanas and clasificacion_hexagonos in ("poder_adquisitivo", "densidad"):
+        hexagonos = clasificar_manzanas_por_infraestructura(hexagonos_raw)
     elif clasificacion_hexagonos == "poder_adquisitivo" and usa_agebs:
         hexagonos = clasificar_por_poder_adquisitivo(hexagonos_raw)
     elif clasificacion_hexagonos == "oportunidad" and len(capas_con_puntos) >= 1:
         hexagonos = clasificar_por_oportunidad(hexagonos_raw, capas_con_puntos, h3_resolution)
+    elif usa_manzanas:
+        hexagonos = clasificar_manzanas_por_infraestructura(hexagonos_raw)
     else:
         hexagonos = clasificar_por_densidad(hexagonos_raw)
 
