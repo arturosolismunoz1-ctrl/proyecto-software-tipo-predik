@@ -369,9 +369,9 @@ def clasificar_manzanas_por_infraestructura(manzanas: List[Dict]) -> List[Dict]:
             nivel = "NULA"
             pct = 0.0
         else:
-            agua = (m.get("con_agua") or 0) / viv
-            dren = (m.get("con_dren") or 0) / viv
-            luz  = (m.get("con_luz")  or 0) / viv
+            agua = min(1.0, (m.get("con_agua") or 0) / viv)
+            dren = min(1.0, (m.get("con_dren") or 0) / viv)
+            luz  = min(1.0, (m.get("con_luz")  or 0) / viv)
             pct  = (agua + dren + luz) / 3.0 * 100.0
             if pct >= 90:
                 nivel = "ALTA"

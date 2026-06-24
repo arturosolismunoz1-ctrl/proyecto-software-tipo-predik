@@ -511,29 +511,142 @@ Esto agrega la columna y puebla los 82,283 registros en segundos. No requiere re
 
 ---
 
-## Próximos pasos (actualizado al cierre sesión 8)
+---
 
-**PRIORIDAD 1 — Aplicar el fix del JOIN y verificar**
-- Correr `alembic -c backend/alembic.ini upgrade head`
-- Verificar con query SQL:
+## 2026-06-24 (sesión 9 — CRS fix, manzanas feature, performance, docs)
+
+### ✅ Plan de sprints creado — `docs/11-plan-sprints.md`
+
+- 13 sprints distribuidos en 5 fases: Cierre Técnico → Frontend Enterprise → Site Selector → POI Explorer → Reportes+SaaS
+- Definition of Done por sprint, diagrama de dependencias, KPIs, matriz de riesgos
+- `docs/00-README.md` actualizado para indexar doc 11 y reflejar estado real del proyecto
+
+### ✅ Migration 0005 aplicada — JOIN geometría + demografía funciona
+
+- Migración `0005_add_cvegeo9_index.py` aplicada: columna `cvegeo_9` VARCHAR(9) en `ageb_geometries`
+- UPDATE pobló los 82,283 registros: `ent(2) + mun(3) + ageb(4)` = 9 chars
+- JOIN resultante: **63,876 matches** (de 82k geometrías × 66k demografías)
+- Verificado con `/reporte/preview`: `usa_agebs=True`, 274 AGEBs en Mérida con población y escolaridad real
+
+### ✅ BIE — ImportError corregido en arranque del servidor
+
+- `services/bie.py` importaba `_ESTADO_A_AREA` de `connectors/inegi/bie.py` pero la variable no existía
+- Fix: agregado `_ESTADO_A_AREA: Dict[str, str] = {}` al connector (dict vacío → todos los estados usan datos demo)
+- Servidor arranca limpio sin errores de importación
+
+### ✅ Bug crítico de CRS (EPSG:6372 vs 4326) — AGEBs y Manzanas
+
+**Causa raíz:** Los shapefiles del MGN usan EPSG:6372 (ITRF2008 Lambert Conformal Conic, México). Los scripts de carga guardaban las coordenadas tal cual (en metros LCC) pero declaraban `SRID=4326`. Las queries `ST_Intersects` con polígonos WGS84 nunca encontraban match.
+
+**Fix para registros existentes:**
+```sql
+-- 82,283 AGEBs reprojectadas (22.7 segundos)
+UPDATE raw_data.ageb_geometries
+SET geom = ST_Transform(ST_SetSRID(geom, 6372), 4326);
+
+-- 352,884 manzanas reprojectadas (45.6 segundos)
+UPDATE raw_data.manzana_vivienda
+SET geom = ST_Transform(ST_SetSRID(geom, 6372), 4326);
+```
+
+**Fix para cargas futuras — `backend/scripts/load_marco_geoestadistico.py`:**
+```python
+from pyproj import Transformer
+_REPROJ = Transformer.from_crs("EPSG:6372", "EPSG:4326", always_xy=True)
+
+def _shape_to_wkt_multipolygon(shp) -> str | None:
+    geom = shapely_transform(_REPROJ.transform, shapely_shape(shp.__geo_interface__))
+    return geom.wkt
+```
+
+**Fix en `backend/scripts/etl_manzana.py`:** mismo patrón + fix de `cvegeo_ageb`:
+- Antes (bug): `cvegeo[:9]` → daba `ent+mun+loc` (incorrecto para JOIN con demographics)
+- Después (correcto): `cvegeo[0:2] + cvegeo[2:5] + cvegeo[9:13]` → `ent+mun+ageb`
+
+### ✅ Performance — subquery para JOIN DENUE espacial
+
+**Problema:** `ST_Within(DenueEstablishment.geom, AgebGeometry.geom)` generaba producto cartesiano entre 528k establecimientos × todos los AGEBs → timeout.
+
+**Fix:** Pre-filtrar establecimientos dentro del polígono con un subquery antes del JOIN:
+```python
+denue_en_zona = (
+    select(DenueEstablishment.id, DenueEstablishment.geom)
+    .where(ST_Intersects(DenueEstablishment.geom, poly_geom))
+    .subquery()
+)
+# Luego: LEFT JOIN ageb ON ST_Within(denue_en_zona.geom, ageb.geom)
+```
+Resultado: **0.8 segundos** en lugar de timeout.
+
+### ✅ Soporte de manzanas en toda la arquitectura (nivel_geografico)
+
+**Nueva tabla en uso:** `raw_data.manzana_vivienda` — 352,884 manzanas con datos de vivienda e infraestructura. ETL lanzado para 32 estados; estados disponibles al cierre de sesión: Chihuahua (114k), Chiapas (111k), Coahuila (78k), Baja California (69k), CDMX (67k), entre otros.
+
+**Backend — `backend/app/services/reporte.py`:**
+- `query_manzanas_en_poligono()` — consulta con subquery DENUE, agrega `indicadores` JSON como `max(cast(... Text))` para evitar el error de PostgreSQL "no equality operator for JSON type"
+- `clasificar_manzanas_por_infraestructura()` — clasifica por % promedio de viviendas con agua+drenaje+luz: ALTA (≥90%), MEDIA (≥65%), BAJA (<65%), NULA (sin viviendas)
+- `preview_reporte()` y `generar_reporte()` aceptan `nivel_geografico: Literal["ageb", "manzana"]`
+- Orden de prioridad: manzanas → AGEBs → H3 (por granularidad)
+- `db.rollback()` en todos los bloques `except` para evitar "transaction aborted in cascade"
+
+**API — `backend/app/api/v1/reporte.py`:**
+- `ReporteRequest` incluye `nivel_geografico: Literal["ageb", "manzana"] = "ageb"`
+- Pasado a `preview_reporte()` y `generar_reporte()`
+
+**Frontend — tipos y UI:**
+- `NivelGeografico = 'ageb' | 'manzana'` en `types.ts`
+- `PreviewData.resumen` incluye `usa_manzanas`, `nivel_geografico`
+- `GeoJSONFeature.properties` incluye `vivtot`, `vivpar_hab`, `con_agua`, `con_dren`, `con_luz`, `tipo_zona`
+- `MapPage.tsx` — estado `nivelGeografico` + UI en Paso 3 con radio buttons AGEB/Manzana + advertencia ámbar
+
+### ✅ Bugs corregidos al cierre
+
+| Bug | Causa | Fix |
+|---|---|---|
+| HTTP 500 en `/preview` con `nivel_geografico=manzana` | `GROUP BY` en columna `JSON` — PostgreSQL no tiene operador de igualdad para ese tipo | `func.max(cast(ManzanaVivienda.indicadores, Text))` — agrega como texto en lugar de groupear |
+| Transacción abortada en cascada | `except Exception` capturaba el error pero el session DB quedaba en estado `aborted` | `db.rollback()` después de cada bloque `except` |
+| Porcentaje de infraestructura >100% | `con_agua/vivpar_hab` puede ser >1 en datos censales (conexiones compartidas) | `min(1.0, con_X / vivpar_hab)` antes del promedio |
+
+### Estado de datos al cierre de sesión 9:
+
+| Tabla | Registros | Estado |
+|---|---|---|
+| `raw_data.ageb_geometries` | 82,283 | ✅ CRS corregido, cvegeo_9 poblado |
+| `raw_data.ageb_demographics` | 66,750 | ✅ JOIN funcional (63,876 matches) |
+| `raw_data.denue_establishments` | ~528,808 | ✅ Parcial |
+| `raw_data.manzana_vivienda` | 352,884+ | ✅ CRS corregido — 7/32 estados procesados |
+| ETL manzanas restantes | — | ⏳ 25 estados pendientes |
+
+### Verificación final del sprint
+
+- `GET /api/v1/reporte/preview` con `nivel_geografico=ageb`: **✅ 274 zonas, 519k pob, usa_agebs=True**
+- `GET /api/v1/reporte/preview` con `nivel_geografico=manzana` (Chihuahua): **✅ 1,481 manzanas, 31,854 viv_hab, usa_manzanas=True**
+- Clasificación de infraestructura: ALTA 1,074 / MEDIA 3 / BAJA 1 / NULA 403 (zona residencial Chihuahua)
+
+---
+
+## Próximos pasos (actualizado al cierre sesión 9)
+
+**PRIORIDAD 1 — Completar ETL de manzanas (25 estados pendientes)**
+- Cuando termine el ETL en background, correr UPDATE para reprojectar los nuevos registros:
   ```sql
-  SELECT COUNT(*) FROM raw_data.ageb_geometries WHERE cvegeo_9 IS NOT NULL;
-  -- Esperado: ~82,000
-  SELECT COUNT(*) 
-  FROM raw_data.ageb_geometries g
-  JOIN raw_data.ageb_demographics d ON g.cvegeo_9 = d.cvegeo;
-  -- Esperado: >50,000
+  UPDATE raw_data.manzana_vivienda
+  SET geom = ST_Transform(ST_SetSRID(geom, 6372), 4326)
+  WHERE ST_SRID(geom) = 4326
+    AND ST_X(ST_Centroid(geom)) > 1000;  -- coordenadas en metros LCC, no grados
   ```
-- Generar un reporte de prueba en Mérida o CDMX y confirmar que usa AGEBs (no H3)
+  (El script `etl_manzana.py` ya fue corregido para nuevas cargas; este UPDATE es solo para los ya cargados antes del fix)
 
-**PRIORIDAD 2 — Frontend Enterprise (visión a mediano plazo)**
+**PRIORIDAD 2 — KPIPanel manzana-aware**
+- Actualizar `KPIPanel.tsx` para mostrar métricas de manzana cuando `nivel_geografico=manzana`:
+  - "Viviendas habitadas" en lugar de "Población alcanzada"
+  - Breakdown % con agua/drenaje/luz
+  - Distribución ALTA/MEDIA/BAJA/NULA
+
+**PRIORIDAD 3 — Frontend Enterprise (visión a mediano plazo)**
 - Migración a MapLibre GL + Deck.gl (capas más potentes, heatmaps nativos)
 - Módulos: Site Selector, POI Explorer, Interactive Maps, Reportes Ejecutivos
 - Stack objetivo: shadcn/ui, TanStack Query, Apache ECharts, Framer Motion
-- Ver `SUPER_PROMPT_ENTERPRISE.md` para la visión completa
-
-**PRIORIDAD 3 — Logging en `reporte.py`**
-- Reemplazar `except Exception: pass` por `logger.exception(...)` para no ocultar errores
 
 **PRIORIDAD 4 — Completar DENUE**
 - Correr `python backend/scripts/etl_maestro.py --solo-denue` para agregar estados faltantes
