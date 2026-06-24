@@ -21,17 +21,16 @@ from xml.sax.saxutils import escape
 
 logger = logging.getLogger(__name__)
 
-import h3
 import openpyxl
 from geoalchemy2 import functions as geo_funcs
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
+from shapely.geometry import Point, shape
 from sqlalchemy import Text, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.etl.denue import DenueETL
 from app.models.raw_data import AgebDemographics, AgebGeometry, DenueEstablishment, ManzanaVivienda
-from app.services.zona_analysis import calculate_commercial_concentration
 
 
 # ── Paleta de colores ──────────────────────────────────────────────────────────
@@ -96,7 +95,6 @@ async def run_etl_capas(
     capas: List[Dict[str, Any]],
     polygon: Dict[str, Any],
     max_records: int,
-    h3_resolution: int,
 ) -> List[Dict[str, int]]:
     """Ejecuta ETL DENUE para cada capa. Retorna stats por capa."""
     resultados = []
@@ -104,7 +102,6 @@ async def run_etl_capas(
         etl = DenueETL()
         stats = await etl.run(
             db,
-            resolution=h3_resolution,
             estado=capa["estado"],
             keyword=capa["keyword"],
             max_records=max_records,
@@ -411,31 +408,19 @@ def clasificar_por_densidad(hexagonos: List[Dict]) -> List[Dict]:
 def clasificar_por_oportunidad(
     hexagonos: List[Dict],
     capas_con_puntos: List[Dict],
-    h3_resolution: int,
 ) -> List[Dict]:
     """
-    Clasifica zonas segun presencia de cadenas y densidad comercial.
-    Soporta tanto hexagonos H3 como AGEBs reales del MGN.
+    Clasifica zonas (AGEBs o manzanas) según presencia de cadenas y densidad comercial.
 
-    Logica:
+    Lógica:
       - Zona con TODAS las cadenas presentes -> SATURADA
       - Zona con ALGUNAS cadenas             -> MEDIA (zona activa, con competencia)
       - Zona sin cadenas + alta densidad     -> ALTA OPORTUNIDAD
       - Zona sin cadenas + media densidad    -> MEDIA-ALTA
       - Zona sin cadenas + baja densidad     -> BAJA
 
-    Para AGEBs (sin h3_index): aproxima la celda H3 del centroide del polígono.
+    Usa Point-in-Polygon con shapely para verificar presencia de cadenas en cada zona.
     """
-    # Para cada capa, calcular en qué celdas H3 caen los puntos
-    capa_cells: Dict[str, set] = {}
-    for capa in capas_con_puntos:
-        cells = {
-            h3.latlng_to_cell(p["lat"], p["lon"], h3_resolution)
-            for p in capa.get("puntos", [])
-            if p.get("lat") and p.get("lon")
-        }
-        capa_cells[capa["label"]] = cells
-
     n_capas = len(capas_con_puntos)
 
     intensidades = sorted(h_["intensidad"] for h_ in hexagonos)
@@ -445,30 +430,24 @@ def clasificar_por_oportunidad(
 
     result = []
     for h in hexagonos:
-        # Determinar celda H3 representativa:
-        # • H3 nativo → usar directamente
-        # • AGEB real → calcular centroide del polígono y convertirlo a H3
-        h3_cell = h.get("h3_index")
-        if h3_cell is None:
-            geom_str = h.get("geom", "")
-            if geom_str:
-                try:
-                    geom = json.loads(geom_str)
-                    ring = (
-                        geom["coordinates"][0][0]
-                        if geom["type"] == "MultiPolygon"
-                        else geom["coordinates"][0]
-                    )
-                    lat_c = sum(c[1] for c in ring) / len(ring)
-                    lng_c = sum(c[0] for c in ring) / len(ring)
-                    h3_cell = h3.latlng_to_cell(lat_c, lng_c, h3_resolution)
-                except Exception:
-                    h3_cell = None
+        zona_shape = None
+        geom_str = h.get("geom", "")
+        if geom_str:
+            try:
+                zona_shape = shape(json.loads(geom_str))
+            except Exception:
+                pass
 
-        n_presentes = (
-            sum(1 for cells in capa_cells.values() if h3_cell in cells)
-            if h3_cell else 0
-        )
+        n_presentes = 0
+        if zona_shape and n_capas > 0:
+            for capa in capas_con_puntos:
+                capa_presente = any(
+                    zona_shape.contains(Point(p["lon"], p["lat"]))
+                    for p in capa.get("puntos", [])
+                    if p.get("lat") and p.get("lon")
+                )
+                if capa_presente:
+                    n_presentes += 1
 
         if n_capas > 1 and n_presentes == n_capas:
             nivel = "SATURADA"
@@ -598,7 +577,7 @@ def generar_kmz(
     L.append(
         f'  <description><![CDATA['
         f'{total_puntos} establecimientos en {len(capas_con_puntos)} capa(s) | '
-        f'{len(hexagonos)} celdas H3<br/>'
+        f'{len(hexagonos)} zonas<br/>'
         f'Fuente: INEGI DENUE — {date.today()}'
         f']]></description>'
     )
@@ -745,7 +724,7 @@ def generar_excel(
         ("Fecha del analisis", str(date.today())),
         ("Capas de busqueda", len(capas_con_puntos)),
         ("Total establecimientos", sum(len(c.get("puntos", [])) for c in capas_con_puntos)),
-        ("Celdas H3 analizadas", len(hexagonos)),
+        ("Zonas analizadas", len(hexagonos)),
     ]
     for i, (label, value) in enumerate(meta, 3):
         ws.cell(row=i, column=1, value=label).font = Font(bold=True)
@@ -805,7 +784,6 @@ async def preview_reporte(
     capas: List[Dict[str, Any]],
     clasificacion_hexagonos: Literal["densidad", "oportunidad", "poder_adquisitivo"],
     max_records: int,
-    h3_resolution: int,
     ejecutar_etl: bool,
     nivel_geografico: Literal["ageb", "manzana"] = "ageb",
 ) -> Dict[str, Any]:
@@ -841,16 +819,6 @@ async def preview_reporte(
             logger.exception("Error consultando AGEBs en polígono")
             db.rollback()
 
-    if not usa_agebs:
-        try:
-            result = calculate_commercial_concentration(db, organization_id, polygon)
-            hexagonos_raw = result.get("celdas_heatmap", [])
-        except ValueError:
-            pass
-        except Exception:
-            logger.exception("Error consultando H3 en polígono")
-            db.rollback()
-
     capas_con_puntos = []
     for capa in capas:
         puntos = query_puntos_capa(db, polygon, capa["keyword"], capa.get("scian_prefix"))
@@ -863,7 +831,7 @@ async def preview_reporte(
     elif clasificacion_hexagonos == "poder_adquisitivo" and usa_agebs:
         hexagonos = clasificar_por_poder_adquisitivo(hexagonos_raw)
     elif clasificacion_hexagonos == "oportunidad" and len(capas_con_puntos) >= 1:
-        hexagonos = clasificar_por_oportunidad(hexagonos_raw, capas_con_puntos, h3_resolution)
+        hexagonos = clasificar_por_oportunidad(hexagonos_raw, capas_con_puntos)
     elif usa_manzanas:
         hexagonos = clasificar_manzanas_por_infraestructura(hexagonos_raw)
     else:
@@ -904,14 +872,9 @@ async def preview_reporte(
                 zonas.append({"type": "Feature", "geometry": geom, "properties": props})
             except Exception:
                 pass
-        elif "h3_index" in zone:
-            props["h3_index"] = zone["h3_index"]
-            props["tipo_zona"] = "h3"
+        elif zone.get("geom"):
             try:
-                boundary = h3.cell_to_boundary(zone["h3_index"])
-                coords = [[lng, lat] for lat, lng in boundary]
-                coords.append(coords[0])
-                geom = {"type": "Polygon", "coordinates": [coords]}
+                geom = json.loads(zone["geom"])
                 zonas.append({"type": "Feature", "geometry": geom, "properties": props})
             except Exception:
                 pass
@@ -970,7 +933,6 @@ async def generar_reporte(
     formato: Literal["kmz", "excel"],
     clasificacion_hexagonos: Literal["densidad", "oportunidad", "poder_adquisitivo"],
     max_records: int,
-    h3_resolution: int,
     ejecutar_etl: bool,
     nivel_geografico: Literal["ageb", "manzana"] = "ageb",
 ) -> bytes:
@@ -986,9 +948,9 @@ async def generar_reporte(
     """
     # 1. ETL
     if ejecutar_etl:
-        await run_etl_capas(db, capas, polygon, max_records, h3_resolution)
+        await run_etl_capas(db, capas, polygon, max_records)
 
-    # 2. Zonas: manzanas → AGEBs → H3 (orden de preferencia por granularidad)
+    # 2. Zonas: manzanas → AGEBs (orden de preferencia por granularidad)
     hexagonos_raw: List[Dict] = []
     usa_agebs = False
     usa_manzanas = False
@@ -1014,16 +976,6 @@ async def generar_reporte(
             logger.exception("Error consultando AGEBs en polígono")
             db.rollback()
 
-    if not usa_agebs:
-        try:
-            result = calculate_commercial_concentration(db, organization_id, polygon)
-            hexagonos_raw = result.get("celdas_heatmap", [])
-        except ValueError:
-            pass
-        except Exception:
-            logger.exception("Error consultando H3 en polígono")
-            db.rollback()
-
     # 3. Puntos por capa
     capas_con_puntos = []
     for capa in capas:
@@ -1035,7 +987,7 @@ async def generar_reporte(
         )
         capas_con_puntos.append({**capa, "puntos": puntos})
 
-    # 4. Clasificar hexagonos / AGEBs / manzanas
+    # 4. Clasificar AGEBs / manzanas
     if not hexagonos_raw:
         hexagonos: List[Dict] = []
     elif usa_manzanas and clasificacion_hexagonos in ("poder_adquisitivo", "densidad"):
@@ -1043,7 +995,7 @@ async def generar_reporte(
     elif clasificacion_hexagonos == "poder_adquisitivo" and usa_agebs:
         hexagonos = clasificar_por_poder_adquisitivo(hexagonos_raw)
     elif clasificacion_hexagonos == "oportunidad" and len(capas_con_puntos) >= 1:
-        hexagonos = clasificar_por_oportunidad(hexagonos_raw, capas_con_puntos, h3_resolution)
+        hexagonos = clasificar_por_oportunidad(hexagonos_raw, capas_con_puntos)
     elif usa_manzanas:
         hexagonos = clasificar_manzanas_por_infraestructura(hexagonos_raw)
     else:

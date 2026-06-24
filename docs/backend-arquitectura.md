@@ -2,25 +2,25 @@
 
 **Proyecto:** predik-geo (clon SaaS de PREDIK GeoData Intelligence)
 **Fecha:** 2026-06-24
-**Alembic head:** `0005_add_cvegeo9_index`
+**Alembic head:** `0006_drop_cube_h3`
 
 ---
 
 ## 1. Visión general
 
-predik-geo es una plataforma de inteligencia geoespacial comercial para México. El backend expone una API REST sobre datos del INEGI (DENUE, MGN, Censo 2020, BIE) almacenados en PostgreSQL con extensiones PostGIS y H3.
+predik-geo es una plataforma de inteligencia geoespacial comercial para México. El backend expone una API REST sobre datos del INEGI (DENUE, MGN, Censo 2020, BIE) almacenados en PostgreSQL con PostGIS. Las unidades geográficas de análisis son **AGEBs** y **manzanas** del Marco Geoestadístico Nacional — no celdas hexagonales artificiales.
 
 ### Stack
 
 | Capa | Tecnología |
 |------|-----------|
 | API | FastAPI 0.x + Python 3.12 |
-| Base de datos | PostgreSQL 16 + PostGIS 3.4 + H3 v4.2.2 |
+| Base de datos | PostgreSQL 16 + PostGIS 3.4 |
 | ORM | SQLAlchemy 2.x (síncrono) |
 | Migraciones | Alembic |
 | Cache/rate-limit | Redis |
 | Auth | JWT (python-jose) + bcrypt |
-| ETL geoespacial | pyshp, shapely, pyproj, geopandas |
+| ETL geoespacial | pyshp, shapely, pyproj |
 | Exportación | openpyxl (Excel), zipfile/KML (KMZ) |
 
 ---
@@ -36,15 +36,16 @@ backend/
 │       ├── 0002_ageb_tables.py
 │       ├── 0003_cube_population.py
 │       ├── 0004_bie_indicadores.py
-│       └── 0005_add_cvegeo9_index.py
+│       ├── 0005_add_cvegeo9_index.py
+│       └── 0006_drop_cube_h3.py
 ├── app/
 │   ├── main.py              # FastAPI app, CORS, lifespan, scheduler
 │   ├── db.py                # SessionLocal, Base
 │   ├── auth.py              # JWT: create_access_token, create_refresh_token, decode_token
 │   ├── deps.py              # get_db, get_current_user
 │   ├── middleware.py        # QueryLogMiddleware
-│   ├── rate_limit.py        # check_rate_limit
-│   ├── scheduler.py         # APScheduler (start/stop)
+│   ├── rate_limit.py        # check_rate_limit (Redis)
+│   ├── scheduler.py         # APScheduler (ETL DENUE nocturno)
 │   ├── api/
 │   │   └── v1/
 │   │       ├── __init__.py  # Router raíz /api/v1
@@ -62,7 +63,7 @@ backend/
 │   │   ├── core.py
 │   │   ├── raw_data.py
 │   │   ├── analytics.py
-│   │   └── cube.py
+│   │   └── cube.py          # Vacío — modelos H3 eliminados en 0006
 │   ├── connectors/
 │   │   ├── base.py          # BaseConnector, GeoFeature
 │   │   ├── registry.py
@@ -70,9 +71,9 @@ backend/
 │   │       ├── denue.py
 │   │       └── bie.py
 │   ├── etl/
-│   │   ├── base.py
-│   │   ├── denue.py         # DenueETL: load_raw(), aggregate_h3()
-│   │   └── poblacion.py
+│   │   ├── base.py          # BaseETL: extract → transform → load_raw
+│   │   ├── denue.py         # DenueETL: load_raw()
+│   │   └── poblacion.py     # No-op — reemplazado por consultas directas a AGEBs
 │   └── services/
 │       ├── zona_analysis.py
 │       ├── densidad_poblacional.py
@@ -94,13 +95,11 @@ backend/
 
 ## 3. Esquemas de la base de datos
 
-La base de datos tiene cuatro esquemas con propósitos distintos:
-
 | Esquema | Propósito |
 |---------|-----------|
 | `core` | Multi-tenancy: organizaciones, usuarios, credenciales, auditoría |
 | `raw_data` | Datos brutos de fuentes externas (DENUE, MGN, Censo, BIE) |
-| `cube` | Cubos pre-agregados en celdas H3 para visualización rápida |
+| `cube` | Esquema vacío — tablas H3 eliminadas en migración 0006 |
 | `analytics` | Resultados de análisis guardados por organización |
 
 ---
@@ -108,40 +107,28 @@ La base de datos tiene cuatro esquemas con propósitos distintos:
 ## 4. Migraciones Alembic
 
 ### 0001 — initial_schemas
-
-Crea las extensiones PostgreSQL (`pgcrypto`, `postgis`, `h3`, `h3_postgis`) y los cuatro esquemas. Crea las siguientes tablas:
-
-- `core.organizations`: organizaciones (multi-tenant), PK UUID, campo `plan` (starter/pro/enterprise)
-- `core.users`: usuarios vinculados a organización, campo `role` (admin/analyst)
-- `core.api_credentials`: credenciales de conectores cifradas por organización
-- `core.query_log`: log de peticiones (endpoint, duración, status code)
-- `raw_data.denue_establishments`: establecimientos DENUE con geometría POINT SRID 4326; índices GIST en `geom` y B-tree en `codigo_scian`
-- `cube.commercial_density_h3`: cubo de densidad comercial por celda H3; índice GIST en `geom_hexagon`
-- `analytics.zona_analysis_results`: resultados de análisis de zona (JSON + polígono); índice GIST en `polygon`
+Crea extensiones PostgreSQL (`pgcrypto`, `postgis`) y los cuatro esquemas. Tablas:
+- `core.organizations`, `core.users`, `core.api_credentials`, `core.query_log`
+- `raw_data.denue_establishments`: POINT SRID 4326, índices GIST en `geom` y B-tree en `codigo_scian`
+- `analytics.zona_analysis_results`: resultados de análisis con índice GIST en `polygon`
 
 ### 0002 — ageb_tables
-
-Revises: `0001_initial_schemas`. Agrega tablas del Marco Geoestadístico y Censo 2020:
-
-- `raw_data.ageb_geometries`: polígonos de AGEBs (MULTIPOLYGON SRID 4326), campos clave `cvegeo` (PK, hasta 16 chars), `clave_ent`, `clave_mun`, `cve_ageb`, `ambito` (Urbana/Rural); índices GIST en `geom` y B-tree en `clave_ent`
-- `raw_data.ageb_demographics`: indicadores demográficos del Censo 2020 por AGEB; columnas estructuradas para población por género y grupos de edad, vivienda, educación y salud; columna `indicadores` JSON con todos los campos crudos del CSV
-- `raw_data.manzana_vivienda`: inventario nacional de vivienda a nivel manzana (MULTIPOLYGON SRID 4326), cvegeo de 16 chars, campos de vivienda e infraestructura (agua, drenaje, luz); índices GIST en `geom` y B-tree en `cvegeo_ageb`
+Agrega tablas del Marco Geoestadístico y Censo 2020:
+- `raw_data.ageb_geometries`: MULTIPOLYGON SRID 4326, PK `cvegeo`, índice GIST en `geom`
+- `raw_data.ageb_demographics`: indicadores Censo 2020 por AGEB
+- `raw_data.manzana_vivienda`: geometría + vivienda a nivel manzana, cvegeo de 16 chars
 
 ### 0003 — cube_population
-
-Revises: `0002_ageb_tables`. Agrega:
-
-- `cube.population_density_h3`: cubo de densidad poblacional por celda H3, columnas de población por género y grupos de edad, `densidad_hab_km2`; índices GIST en `geom_hexagon` y B-tree en `h3_resolution`
+Crea `cube.population_density_h3` (eliminada en 0006).
 
 ### 0004 — bie_indicadores
-
-Revises: `0003_cube_population`. Agrega:
-
-- `raw_data.bie_indicadores`: series de tiempo del Banco de Información Económica (INEGI); constraint único en `(indicador_id, area_clave, periodo)`; índices en `estado_clave`, `indicador_id` y `periodo_fecha`
+Agrega `raw_data.bie_indicadores`: series de tiempo del BIE INEGI, constraint único en `(indicador_id, area_clave, periodo)`.
 
 ### 0005 — add_cvegeo9_index
+Agrega columna `cvegeo_9 VARCHAR(9)` a `raw_data.ageb_geometries` y la puebla con `ent(2)+mun(3)+ageb(4)`. Normaliza el JOIN entre AGEBs y demografía del Censo (que siempre usa 9 chars).
 
-Revises: `0004_bie_indicadores`. Agrega columna `cvegeo_9 VARCHAR(9)` a `raw_data.ageb_geometries` y la puebla con `clave_ent(2) + clave_mun(3) + cve_ageb(4)`. Crea índice B-tree. Razón: el shapefile MGN almacena CVEGEO en formato de 9 o 13 chars; el Censo 2020 usa siempre 9 chars, por lo que este campo normaliza el JOIN entre tablas.
+### 0006 — drop_cube_h3
+Elimina `cube.commercial_density_h3` y `cube.population_density_h3`. Los cubos H3 fueron reemplazados por consultas directas a `ageb_geometries`, `ageb_demographics` y `manzana_vivienda`. La extensión h3 y el paquete Python `h3` fueron removidos del stack.
 
 ---
 
@@ -216,7 +203,7 @@ Revises: `0004_bie_indicadores`. Agrega columna `cvegeo_9 VARCHAR(9)` a `raw_dat
 
 | Columna | Tipo | Notas |
 |---------|------|-------|
-| cvegeo | VARCHAR(16) PK | 9–16 chars según formato MGN |
+| cvegeo | VARCHAR(16) PK | 9–13 chars según formato MGN |
 | clave_ent | VARCHAR(2) | código de entidad federativa |
 | clave_mun | VARCHAR(3) | |
 | cve_loc | VARCHAR(4) | |
@@ -250,9 +237,9 @@ Revises: `0004_bie_indicadores`. Agrega columna `cvegeo_9 VARCHAR(9)` a `raw_dat
 | clave_ent / clave_mun / cve_loc / cve_ageb / cve_mza | VARCHAR | |
 | cvegeo_ageb | VARCHAR(16) | FK lógica → ageb_geometries |
 | vivtot / vivpar / vivpar_hab | INTEGER | vivienda |
-| con_agua / con_dren / con_luz | INTEGER | infraestructura |
+| con_agua / con_dren / con_luz | INTEGER | infraestructura básica |
 | geom | MULTIPOLYGON SRID 4326 | índice GIST |
-| indicadores | JSON | campos adicionales del Censo |
+| indicadores | JSONB | campos adicionales del Censo |
 | fuente | VARCHAR(50) | `MGN2025+CENSO2020` |
 | loaded_at | TIMESTAMPTZ | |
 
@@ -272,38 +259,7 @@ Revises: `0004_bie_indicadores`. Agrega columna `cvegeo_9 VARCHAR(9)` a `raw_dat
 | fuente | VARCHAR(50) | default `BIE_INEGI` |
 | loaded_at | TIMESTAMPTZ | |
 
-### 5.3 Esquema `cube`
-
-**`cube.commercial_density_h3`**
-
-| Columna | Tipo | Notas |
-|---------|------|-------|
-| h3_index | VARCHAR(20) PK | índice H3 hex string |
-| h3_resolution | SMALLINT | resolución H3 (tipicamente 9) |
-| entidad / municipio | VARCHAR | |
-| total_establecimientos | INTEGER | |
-| por_categoria | JSON | conteo por categoría SCIAN |
-| top_categoria | VARCHAR(255) | |
-| geom_centroid | POINT SRID 4326 | |
-| geom_hexagon | POLYGON SRID 4326 | índice GIST |
-| last_refreshed | TIMESTAMPTZ | |
-
-**`cube.population_density_h3`**
-
-| Columna | Tipo | Notas |
-|---------|------|-------|
-| h3_index | VARCHAR(20) PK | |
-| h3_resolution | SMALLINT | |
-| entidad / municipio | VARCHAR | |
-| pobtot / pobmas / pobfem | INTEGER | |
-| p_0a14 / p_15a64 / p_65ymas | INTEGER | |
-| vivpar_hab | INTEGER | |
-| densidad_hab_km2 | FLOAT | |
-| geom_centroid | POINT SRID 4326 | |
-| geom_hexagon | POLYGON SRID 4326 | índice GIST |
-| last_refreshed | TIMESTAMPTZ | |
-
-### 5.4 Esquema `analytics`
+### 5.3 Esquema `analytics`
 
 **`analytics.zona_analysis_results`**
 
@@ -312,7 +268,7 @@ Revises: `0004_bie_indicadores`. Agrega columna `cvegeo_9 VARCHAR(9)` a `raw_dat
 | id | UUID PK | |
 | organization_id | UUID FK | |
 | user_id | UUID FK | nullable |
-| polygon | POLYGON SRID 4326 | polígono del área analizada; índice GIST |
+| polygon | POLYGON SRID 4326 | índice GIST |
 | analysis_type | VARCHAR(50) | `concentracion_comercial` o `densidad_poblacional` |
 | result_json | JSON | resultado completo del análisis |
 | created_at | TIMESTAMPTZ | |
@@ -336,34 +292,38 @@ Todos requieren autenticación JWT.
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | `/zona/concentracion-comercial` | Analiza concentración comercial en un polígono GeoJSON; devuelve totales, categorías SCIAN, negocios ancla y celdas heatmap H3 |
-| POST | `/zona/densidad-poblacional` | Analiza densidad poblacional en un polígono; devuelve datos Censo 2020 por AGEB intersectada |
-| POST | `/zona/establecimientos` | Lista establecimientos individuales DENUE dentro de un polígono; permite filtro por `keyword` y `scian_prefix` |
-| GET | `/zona/analisis/{analysis_id}` | Recupera un análisis de concentración comercial guardado por su UUID |
+| POST | `/zona/concentracion-comercial` | Analiza concentración comercial en un polígono. Devuelve totales, categorías SCIAN, negocios ancla y heatmap por AGEB o manzana |
+| POST | `/zona/densidad-poblacional` | Analiza densidad poblacional; devuelve datos Censo 2020 por AGEB con ponderación de área |
+| POST | `/zona/establecimientos` | Lista establecimientos individuales DENUE; filtro por `keyword` y `scian_prefix` |
+| GET | `/zona/analisis/{analysis_id}` | Recupera un análisis guardado por UUID |
+
+**Parámetro `nivel_geografico`:** `/concentracion-comercial` acepta `"ageb"` (default) o `"manzana"`. Con `"manzana"` usa `manzana_vivienda` como unidad de análisis; si no hay cobertura para esa zona, hace fallback automático a AGEBs.
 
 ### 6.3 Análisis guardados — `/analisis`
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/analisis/` | Lista todos los análisis guardados de la organización |
-| GET | `/analisis/{analysis_id}` | Obtiene un análisis guardado por UUID |
-| GET | `/analisis/comparar?ids=uuid1,uuid2` | Compara 2 o más análisis en paralelo (resumen side-by-side) |
-| DELETE | `/analisis/{analysis_id}` | Elimina un análisis guardado |
+| GET | `/analisis/` | Lista todos los análisis de la organización |
+| GET | `/analisis/{analysis_id}` | Obtiene un análisis guardado |
+| GET | `/analisis/comparar?ids=uuid1,uuid2` | Compara 2 o más análisis en paralelo |
+| DELETE | `/analisis/{analysis_id}` | Elimina un análisis |
 
 ### 6.4 Reportes geoespaciales — `/reporte`
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | `/reporte/generar` | Genera reporte KMZ o Excel para un polígono con 1–8 capas de búsqueda; soporta clasificación por densidad, oportunidad o poder adquisitivo |
-| POST | `/reporte/preview` | Preview del reporte en GeoJSON para visualización en mapa antes de generar el archivo |
+| POST | `/reporte/generar` | Genera reporte KMZ o Excel con 1–8 capas de búsqueda |
+| POST | `/reporte/preview` | Preview en GeoJSON para visualización en mapa |
 
 Parámetros clave de `ReporteRequest`:
-- `polygon`: GeoJSON Polygon del área
+- `polygon`: GeoJSON Polygon
 - `capas`: lista de `CapaBusqueda` (keyword, label, color, estado, icon, scian_prefix)
 - `formato`: `kmz` o `excel`
 - `clasificacion_hexagonos`: `densidad` | `oportunidad` | `poder_adquisitivo`
 - `nivel_geografico`: `ageb` o `manzana`
-- `ejecutar_etl`: `true` para consultar INEGI en tiempo real, `false` para usar datos en BD
+- `ejecutar_etl`: `true` para consultar INEGI en tiempo real
+
+> `h3_resolution` fue eliminado — ya no aplica.
 
 ### 6.5 Catálogo geográfico — `/catalogo`
 
@@ -371,20 +331,20 @@ No requiere autenticación.
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/catalogo/estados` | Lista los 32 estados con clave INEGI y abreviatura |
-| GET | `/catalogo/municipios/{clave_estado}` | Municipios predefinidos de un estado |
-| GET | `/catalogo/municipio-bbox/{clave_estado}/{clave_mun}` | Bounding box de un municipio consultado desde `ageb_geometries` |
+| GET | `/catalogo/estados` | Lista los 32 estados con clave INEGI |
+| GET | `/catalogo/municipios/{clave_estado}` | Municipios de un estado |
+| GET | `/catalogo/municipio-bbox/{clave_estado}/{clave_mun}` | Bounding box de un municipio |
 
 ### 6.6 BIE — Indicadores económicos — `/bie`
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/bie/indicadores` | Catálogo de indicadores BIE disponibles (ITAEE, desocupación, empleo formal) |
-| GET | `/bie/estado/{clave_estado}` | Resumen económico de un estado (último valor de cada indicador) |
-| GET | `/bie/estado/{clave_estado}/{indicador_key}` | Serie histórica de un indicador para un estado; parámetro `limit` (default 12, máx 60) |
-| GET | `/bie/stats` | Estadísticas de cobertura de datos BIE en la BD |
-| POST | `/bie/sync/{clave_estado}` | Dispara carga BIE en background para un estado |
-| POST | `/bie/sync` | Dispara carga BIE en background para los 32 estados |
+| GET | `/bie/indicadores` | Catálogo de indicadores BIE disponibles |
+| GET | `/bie/estado/{clave_estado}` | Resumen económico de un estado |
+| GET | `/bie/estado/{clave_estado}/{indicador_key}` | Serie histórica de un indicador; parámetro `limit` (default 12, máx 60) |
+| GET | `/bie/stats` | Estadísticas de cobertura BIE en la BD |
+| POST | `/bie/sync/{clave_estado}` | Carga BIE en background para un estado |
+| POST | `/bie/sync` | Carga BIE en background para los 32 estados |
 
 ### 6.7 Administración — `/admin`
 
@@ -392,12 +352,12 @@ Requieren rol `admin`.
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/admin/bd-status` | Estado de población de tablas clave (registros y umbral mínimo) |
-| GET | `/admin/conectores` | Lista conectores registrados y su estado |
-| GET | `/admin/conectores/{nombre}/health` | Estado de salud de un conector específico |
-| POST | `/admin/conectores/{nombre}/sync` | Dispara sincronización de un conector |
-| POST | `/admin/etl/{source}/run` | Ejecuta un ETL específico (actualmente sólo `inegi_denue`) |
-| POST | `/admin/etl/maestro/run` | Ejecuta el ETL maestro DENUE paginado para los estados indicados |
+| GET | `/admin/bd-status` | Estado de tablas clave: `denue_establishments`, `ageb_geometries`, `ageb_demographics`, `manzana_vivienda` |
+| GET | `/admin/conectores` | Lista conectores y su estado |
+| GET | `/admin/conectores/{nombre}/health` | Health check de un conector |
+| POST | `/admin/conectores/{nombre}/sync` | Sincronización de un conector |
+| POST | `/admin/etl/{source}/run` | Ejecuta ETL (`inegi_denue`) |
+| POST | `/admin/etl/maestro/run` | ETL maestro DENUE paginado |
 
 ### 6.8 Health check
 
@@ -418,11 +378,11 @@ Requieren rol `admin`.
 | Clase | `DenueConnector` (hereda `BaseConnector`) |
 | Nombre | `inegi_denue` |
 | URL base | `https://www.inegi.org.mx/app/api/denue/v1/consulta` |
-| Endpoint usado | `GET /BuscarEntidad/{keyword}/{estado}/{inicio}/{fin}/{token}` |
+| Endpoint | `GET /BuscarEntidad/{keyword}/{estado}/{inicio}/{fin}/{token}` |
 | Máximo por llamada | 2,500 registros |
 | Token env var | `INEGI_DENUE_TOKEN` |
 
-El conector normaliza la respuesta de la API al dataclass `GeoFeature` y extrae el código SCIAN desde las posiciones 5–10 del campo `CLEE`. Cuando el token no está configurado devuelve 3 features de demostración.
+Normaliza la respuesta al dataclass `GeoFeature`. Sin token devuelve 3 features de demostración.
 
 ### 7.2 BIE (INEGI)
 
@@ -433,8 +393,8 @@ El conector normaliza la respuesta de la API al dataclass `GeoFeature` y extrae 
 | Clase | `BIEConnector` (hereda `BaseConnector`) |
 | Nombre | `inegi_bie` |
 | URL base | `https://www.inegi.org.mx/app/api/indicadores/desarrolladores/jsonxml` |
-| Endpoint usado | `GET /INDICATOR/{ids}/es/{area}/false/BIE-BISE/2.0/{token}?type=json` |
-| Área | `00` (nacional; los IDs de indicadores estatales son distintos por entidad) |
+| Endpoint | `GET /INDICATOR/{ids}/es/{area}/false/BIE-BISE/2.0/{token}?type=json` |
+| Área | `00` (nacional) |
 | Token env var | `INEGI_BIE_API_TOKEN` (mismo token que DENUE) |
 
 **Indicadores configurados:**
@@ -445,189 +405,212 @@ El conector normaliza la respuesta de la API al dataclass `GeoFeature` y extrae 
 | `desocupacion` | 444612 | Tasa de Desocupación (ENOE) | Trimestral |
 | `empleo_formal` | 935 | Trabajadores asegurados IMSS | Mensual |
 
-Cuando el token no está configurado el servicio devuelve datos demo precargados para los 32 estados.
+---
+
+## 8. Lógica de análisis geoespacial
+
+### 8.1 Unidades geográficas
+
+| Nivel | Tabla | Tamaño típico | Fuente |
+|-------|-------|--------------|--------|
+| AGEB | `ageb_geometries` + `ageb_demographics` | ~1 km² | MGN 2025 + Censo 2020 |
+| Manzana | `manzana_vivienda` | ~100 m² | MGN 2025 + Censo 2020 |
+
+La API elige la unidad según `nivel_geografico`. Con `"manzana"` hace fallback automático a AGEBs si no hay cobertura.
+
+### 8.2 Análisis de concentración comercial
+
+**Archivo:** `backend/app/services/zona_analysis.py`
+
+1. Cuenta establecimientos DENUE dentro del polígono, agrupados por `clase_actividad`
+2. Identifica negocios ancla (categorías con cantidad ≥ 2× el promedio)
+3. Consulta AGEBs o manzanas que intersectan el polígono con `ST_Intersects`
+4. Hace JOIN espacial de establecimientos a cada unidad con `ST_Within`
+5. Normaliza intensidad de 0 a 1 relativa al máximo de establecimientos por unidad
+
+### 8.3 Clasificación de zonas en reportes
+
+**Archivo:** `backend/app/services/reporte.py`
+
+| Clasificación | Lógica |
+|--------------|--------|
+| `densidad` | Gradiente de color según cantidad de establecimientos por zona (verde → naranja → rojo) |
+| `oportunidad` | Usa `shapely.Point.within(Polygon)` para verificar presencia de cadenas en cada zona: SATURADA → MEDIA → ALTA / MEDIA_ALTA / BAJA según densidad |
+| `poder_adquisitivo` | Por `graproes` (años escolaridad Censo 2020): ≥12 PREMIUM / ≥9 MEDIO_ALTO / ≥6 MEDIO / <6 BAJO |
+
+La clasificación `oportunidad` reemplazó el mapeo H3 por Point-in-Polygon con shapely sobre las geometrías reales de cada AGEB o manzana.
+
+### 8.4 Densidad poblacional
+
+**Archivo:** `backend/app/services/densidad_poblacional.py`
+
+Promedio ponderado por fracción de área intersectada:
+- `fraccion = ST_Area(ST_Intersection(ageb, polígono)) / ST_Area(ageb)`
+- Pondera población, vivienda y grupos de edad por esa fracción
+- Devuelve densidad en hab/km²
 
 ---
 
-## 8. Scripts ETL
+## 9. Scripts ETL
 
 Todos los scripts se ejecutan desde el directorio raíz del repositorio.
 
-### 8.1 `etl_maestro.py` — Orquestador principal
-
-**Ruta:** `backend/scripts/etl_maestro.py`
-
-Orquesta las tres fuentes principales de datos. Es el punto de entrada para poblar la BD desde cero.
+### 9.1 `etl_maestro.py` — Orquestador DENUE
 
 ```bash
-# Cargar todo (MGN + Censo + DENUE)
-python backend/scripts/etl_maestro.py --todo
-
-# Solo DENUE (todos los estados)
 python backend/scripts/etl_maestro.py --solo-denue
-
-# DENUE para estados específicos
 python backend/scripts/etl_maestro.py --solo-denue --estados 09,14,15
-
-# Solo geometrías MGN
 python backend/scripts/etl_maestro.py --solo-geo
-
-# Solo Censo 2020
 python backend/scripts/etl_maestro.py --solo-censo
-
-# Filtrar por estados (cualquier combinación)
-python backend/scripts/etl_maestro.py --todo --estados 09,14,15 --h3-res 9
 ```
 
-La descarga DENUE itera sobre 20 sectores SCIAN (`comercio`, `restaurante`, `salud`, etc.) para cubrir ~95% de los establecimientos, ya que la API no soporta wildcard. Usa `ON CONFLICT DO UPDATE` por `clee` para resolver duplicados entre sectores.
+Itera 20 sectores SCIAN. Usa `ON CONFLICT DO UPDATE` por `clee`.
 
-### 8.2 `etl_mgn_maestro.py` — MGN + Censo 2020
-
-**Ruta:** `backend/scripts/etl_mgn_maestro.py`
-
-Script especializado para cargar el Marco Geoestadístico y demografía de AGEBs.
+### 9.2 `etl_mgn_maestro.py` — MGN + Censo 2020 (AGEBs)
 
 ```bash
-# Carga completa (MGN + Censo 2020)
 python backend/scripts/etl_mgn_maestro.py
-
-# Solo geometrías MGN
 python backend/scripts/etl_mgn_maestro.py --solo-mgn
-
-# Solo Censo 2020 (ya teniendo las geometrías)
 python backend/scripts/etl_mgn_maestro.py --solo-censo
-
-# Solo un estado (para pruebas)
 python backend/scripts/etl_mgn_maestro.py --entidad 31
 ```
 
-Requiere `data/mgn/mg_2025_integrado.zip` (ZIP nacional) o ZIPs por estado `01_aguascalientes.zip`...`32_zacatecas.zip`.
+### 9.3 `etl_manzana.py` — Vivienda a nivel manzana
 
-### 8.3 `load_marco_geoestadistico.py` — Carga de shapefiles MGN
-
-**Ruta:** `backend/scripts/load_marco_geoestadistico.py`
-
-Carga shapefiles de AGEBs urbanas del MGN 2025 en `raw_data.ageb_geometries`. Maneja reproyección de EPSG:6372 (LCC México ITRF2008) a EPSG:4326 (WGS84), múltiples encodings (UTF-8, latin-1, cp1252) y normaliza el campo `cvegeo_9`.
+Combina `*m.shp` del MGN con filas de manzana del Censo 2020 (`MZA != "000"`). Reproyecta EPSG:6372 → EPSG:4326 con pyproj.
 
 ```bash
-# Desde ZIP integrado nacional (recomendado)
-python backend/scripts/load_marco_geoestadistico.py --zip data/mgn/mg_2025_integrado.zip
-
-# Desde directorio con ZIPs por estado
-python backend/scripts/load_marco_geoestadistico.py --zip-dir data/mgn/
-
-# Desde shapefile ya extraído
-python backend/scripts/load_marco_geoestadistico.py --shapefile data/mgn/00a.shp
-
-# Desde directorio ya extraído (auto-descubre *a.shp)
-python backend/scripts/load_marco_geoestadistico.py --dir data/mgn/
-
-# Filtrar por entidad (con --zip o --shapefile)
-python backend/scripts/load_marco_geoestadistico.py --zip data/mgn/mg_2025_integrado.zip --entidad 09
-```
-
-### 8.4 `load_censo_2020.py` — Carga de demografía Censo 2020
-
-**Ruta:** `backend/scripts/load_censo_2020.py`
-
-Carga CSVs `RESAGEBURB_<EE>_2020.CSV` del Censo de Población y Vivienda 2020 en `raw_data.ageb_demographics`. Sólo procesa filas donde `MZA == "000"` (totales de AGEB).
-
-```bash
-# Un solo estado
-python backend/scripts/load_censo_2020.py --csv data/censo/RESAGEBURB_09_2020.CSV
-
-# Directorio con múltiples archivos
-python backend/scripts/load_censo_2020.py --dir data/censo/
-```
-
-### 8.5 `etl_manzana.py` — Datos de vivienda a nivel manzana
-
-**Ruta:** `backend/scripts/etl_manzana.py`
-
-Combina geometrías de manzanas del shapefile `*m.shp` del MGN 2025 con demografía del Censo 2020 (filas con `MZA != "000"`) y carga en `raw_data.manzana_vivienda`. Usa psycopg2 directamente para upserts masivos.
-
-```bash
-# Todos los estados disponibles
 python backend/scripts/etl_manzana.py
-
-# Un estado específico
 python backend/scripts/etl_manzana.py --estado 14
 ```
 
-Requiere los ZIPs de estado en `data/mgn/` con formato `{NN}_{nombre_estado}.zip` y los CSVs del Censo en `data/censo_2020/RESAGEBURB_{NN}CSV20.csv`.
+Requiere ZIPs en `data/mgn/{NN}_{nombre}.zip` y CSVs en `data/censo_2020/RESAGEBURB_{NN}CSV20.csv`.
 
-### 8.6 `etl_bie.py` — Indicadores económicos BIE
-
-**Ruta:** `backend/scripts/etl_bie.py`
-
-Descarga series históricas completas de los indicadores BIE (ITAEE, desocupación, empleo formal IMSS) y las carga en `raw_data.bie_indicadores`. Requiere `INEGI_BIE_API_TOKEN` en `.env`.
+### 9.4 `etl_bie.py` — Indicadores económicos BIE
 
 ```bash
-# Todos los estados (serie histórica completa)
 python backend/scripts/etl_bie.py
-
-# Solo un estado
 python backend/scripts/etl_bie.py --estado 14
-
-# Ver datos sin insertar
 python backend/scripts/etl_bie.py --dry-run
 ```
 
----
-
-## 9. Estado actual de la base de datos
-
-| Tabla | Registros | Tamaño | Cobertura |
-|-------|-----------|--------|-----------|
-| `raw_data.ageb_geometries` | 82,283 | 352 MB | 32 estados (completo) |
-| `raw_data.ageb_demographics` | 66,750 | 137 MB | 32 estados (completo) |
-| `raw_data.denue_establishments` | 1,407,499 | ~1.3 GB | 15/32 estados (01–15) |
-| `raw_data.manzana_vivienda` | 534,577 | — | 9/32 estados (01–09) |
-| `raw_data.bie_indicadores` | 38,752 | — | ITAEE, desocupación, empleo formal |
-| `cube.commercial_density_h3` | 62,249 hexágonos | — | Resolución H3-9 |
-| `cube.population_density_h3` | 0 | — | Sin poblar (ETL pendiente) |
-| `analytics.zona_analysis_results` | 7 | — | Análisis guardados |
+Requiere `INEGI_BIE_API_TOKEN` en `.env`.
 
 ---
 
-## 10. ETLs pendientes
+## 10. Estado actual de la base de datos
 
-### 10.1 DENUE — estados 16–32
+*Actualizado: 2026-06-24 ~12:00*
 
-Faltan 17 estados. Ejecutar:
+| Tabla | Registros aprox. | Cobertura |
+|-------|-----------------|-----------|
+| `raw_data.ageb_geometries` | 82,283 | 32 estados (completo) |
+| `raw_data.ageb_demographics` | 66,750 | 32 estados (completo) |
+| `raw_data.denue_establishments` | ~1,500,000+ | 17/32 estados (01–17); ETL 18–32 en curso |
+| `raw_data.manzana_vivienda` | ~1,041,975+ | 14/32 estados (01–14); ETL 15–32 en curso |
+| `raw_data.bie_indicadores` | 38,752 | ITAEE, desocupación, empleo formal (32 estados) |
+| `cube.commercial_density_h3` | — | Tabla eliminada (migración 0006) |
+| `cube.population_density_h3` | — | Tabla eliminada (migración 0006) |
+| `analytics.zona_analysis_results` | 7 | Análisis guardados |
 
-```bash
-python backend/scripts/etl_maestro.py --solo-denue --estados 16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32
-```
+### Manzanas cargadas por estado (al 2026-06-24)
 
-Tiempo estimado: 6–10 horas. El script es idempotente (ON CONFLICT DO UPDATE por `clee`).
-
-### 10.2 Manzana — estados 10–32
-
-Faltan 23 estados. Ejecutar por estado para controlar progreso:
-
-```bash
-python backend/scripts/etl_manzana.py --estado 10
-python backend/scripts/etl_manzana.py --estado 11
-# ... continuar hasta estado 32
-```
-
-Requiere que los ZIPs de MGN por estado estén en `data/mgn/` y los CSVs del Censo en `data/censo_2020/`.
-
-### 10.3 `cube.population_density_h3` — cubo de densidad poblacional
-
-La tabla está vacía. El ETL que agrega `ageb_demographics` → celdas H3 no ha sido ejecutado. El módulo `backend/app/etl/poblacion.py` contiene la lógica de agregación. Ejecutar vía API:
-
-```bash
-# Disparar desde endpoint admin (requiere rol admin)
-POST /api/v1/admin/etl/inegi_denue/run  # Solo disponible para DENUE actualmente
-```
-
-El ETL de población requiere implementación del endpoint específico o ejecución directa del script cuando esté disponible.
+| Estado | Manzanas | Estado | Manzanas |
+|--------|----------|--------|----------|
+| 01 Aguascalientes | 24,385 | 08 Chihuahua | 114,469 |
+| 02 Baja California | 69,638 | 09 CDMX | 67,224 |
+| 03 Baja California Sur | 25,441 | 10 Durango | 72,056 |
+| 04 Campeche | 24,872 | 11 Guanajuato | 115,349 |
+| 05 Coahuila | 78,542 | 12 Guerrero | 95,795 |
+| 06 Colima | 18,079 | 13 Hidalgo | 83,194 |
+| 07 Chiapas | 111,927 | 14 Jalisco | 141,004 |
+| **15–32** | *en carga* | | |
 
 ---
 
-## 11. Tokens y servicios externos
+## 11. ETLs en curso y cómo lanzarlos
+
+### 11.1 Lanzar ETL como proceso independiente de VS Code
+
+En Windows, los procesos lanzados desde el terminal integrado de VS Code mueren al cerrar VS Code. Para lanzar un ETL que sobreviva al cierre de VS Code o Claude Code:
+
+```powershell
+# Desde PowerShell externo (Windows Terminal / CMD fuera de VS Code)
+$logFile = "C:\Users\Arturo Solis Munoz\Desktop\predik-geo\logs\etl_denue_18_32.log"
+$workDir = "C:\Users\Arturo Solis Munoz\Desktop\predik-geo"
+$python  = "$workDir\.venv\Scripts\python.exe"
+
+Start-Process -FilePath $python `
+    -ArgumentList "-u backend/scripts/etl_maestro.py --solo-denue --estados 18,19,20,21,22,23,24,25,26,27,28,29,30,31,32" `
+    -WorkingDirectory $workDir `
+    -RedirectStandardOutput $logFile `
+    -RedirectStandardError "$logFile.err" `
+    -WindowStyle Hidden `
+    -PassThru | Select-Object Id, StartTime
+```
+
+> Los tokens de la sesión Claude **no afectan** los procesos ETL. Son procesos del SO independientes de la conversación.
+
+### 11.2 DENUE — estados 18–32
+
+En curso (PID 17208, relanzado 2026-06-24 11:52). Log en `logs/etl_denue_18_32.log`.
+
+> **Bug corregido (2026-06-24):** `etl_maestro.py` línea 254 llamaba a `etl.aggregate_h3()` que fue eliminado en la refactorización H3. El proceso moría silenciosamente al terminar de descargar cada estado. Fix: eliminada esa línea.
+
+Si se interrumpe, relanzar con `Start-Process` (ver 11.1) apuntando a los estados pendientes:
+
+```bash
+# Desde terminal externo:
+python backend/scripts/etl_maestro.py --solo-denue --estados 19,20,21,...
+```
+
+### 11.3 Manzana — estados 15–32
+
+En curso (PID 8948, proceso huérfano — padre ya no existe, sobrevive cierre de VS Code). Log en `logs/etl_manzana_10_32.log`.
+
+Si se interrumpe:
+
+```powershell
+# Ver el último estado completado en el log:
+Get-Content logs\etl_manzana_10_32.log | Select-String "Cargadas:"
+
+# Relanzar desde el estado que faltó:
+Start-Process -FilePath ".venv\Scripts\python.exe" `
+    -ArgumentList "-u backend/scripts/etl_manzana.py" `
+    -WorkingDirectory "C:\Users\Arturo Solis Munoz\Desktop\predik-geo" `
+    -RedirectStandardOutput "logs\etl_manzana_continua.log" `
+    -WindowStyle Hidden
+```
+
+---
+
+## 12. Decisión técnica: eliminación de H3
+
+**Fecha:** 2026-06-24
+
+**Razón:** Los cubos hexagonales H3 eran redundantes con los AGEBs y manzanas del INEGI, que son unidades estadísticas reales con datos demográficos ya asociados, mayor precisión espacial y sin dependencias adicionales de infraestructura. La extensión PostgreSQL H3 impediría despliegues en servicios gestionados (RDS, Cloud SQL, Supabase).
+
+**Archivos modificados:**
+
+| Archivo | Cambio |
+|---------|--------|
+| `requirements.txt` | `h3>=4.0.0` removido |
+| `app/models/cube.py` | Vaciado — modelos `CommercialDensityH3` y `PopulationDensityH3` eliminados |
+| `app/etl/base.py` | Contrato reducido a 3 pasos: `extract → transform → load_raw` |
+| `app/etl/denue.py` | `aggregate_h3()` eliminado |
+| `app/etl/poblacion.py` | Reemplazado por no-op |
+| `app/services/zona_analysis.py` | Reescrito: consulta DENUE + AGEBs + manzanas directamente |
+| `app/services/densidad_poblacional.py` | Fast-path de cubo H3 eliminado; solo raw_data |
+| `app/services/reporte.py` | `import h3` removido; `clasificar_por_oportunidad` usa `shapely.Point.within(Polygon)` |
+| `app/api/v1/reporte.py` | `h3_resolution` eliminado del schema `ReporteRequest` |
+| `app/api/v1/etl.py` | `h3_resolution` y llamada a `aggregate_h3` eliminados |
+| `app/api/v1/admin.py` | `bd-status` monitorea `manzana_vivienda` en lugar del cubo H3 |
+| `app/scheduler.py` | Job `etl_poblacion` eliminado |
+| `alembic/versions/0006_drop_cube_h3.py` | Migración que elimina las dos tablas del cubo |
+
+---
+
+## 13. Tokens y servicios externos
 
 | Variable de entorno | Servicio | Notas |
 |--------------------|----------|-------|
@@ -635,37 +618,38 @@ El ETL de población requiere implementación del endpoint específico o ejecuci
 | `INEGI_BIE_API_TOKEN` | API BIE INEGI | Configurado. Mismo token que DENUE |
 | `MAPTILER_KEY` | MapTiler (frontend) | Para tiles de mapa base |
 
-Obtener token INEGI (gratuito): `https://www.inegi.org.mx/servicios/api_indicadores.html`
+Token INEGI (gratuito): `https://www.inegi.org.mx/servicios/api_indicadores.html`
 
 ---
 
-## 12. Configuración de la aplicación
+## 14. Configuración de la aplicación
 
 ### Arranque
 
 ```bash
-# Activar entorno virtual
 cd backend
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Infraestructura local (Docker)
+
+```bash
+docker-compose -f infra/docker-compose.yml up -d
+docker-compose -f infra/docker-compose.yml ps
 ```
 
 ### Migraciones
 
 ```bash
-# Aplicar todas las migraciones
-alembic upgrade head
-
-# Ver estado actual
-alembic current
-
-# Revertir última migración
-alembic downgrade -1
+alembic upgrade head     # Aplica todas las migraciones
+alembic current          # Ver estado actual
+alembic downgrade -1     # Revertir última migración
 ```
 
 ### Variables de entorno requeridas (`.env` en raíz)
 
 ```
-DATABASE_URL=postgresql+psycopg2://user:password@localhost:5432/predikgeo
+DATABASE_URL=postgresql+psycopg2://admin:dev_password_local@localhost:5432/geodata_predik_clone
 INEGI_DENUE_TOKEN=<token>
 INEGI_BIE_API_TOKEN=<token>
 JWT_SECRET_KEY=<clave-secreta>
@@ -674,10 +658,10 @@ REDIS_URL=redis://localhost:6379
 
 ### CORS
 
-El servidor acepta peticiones desde `http://localhost:5173` (Vite dev), `http://localhost:3000` y `http://127.0.0.1:5173`.
+Acepta peticiones desde `http://localhost:5173` (Vite dev), `http://localhost:3000` y `http://127.0.0.1:5173`.
 
 ### Middleware
 
 - `QueryLogMiddleware`: registra todas las peticiones en `core.query_log`
 - `CORSMiddleware`: habilitado con credenciales y métodos/headers wildcard
-- `check_rate_limit`: dependencia inyectada en endpoints de análisis y reporte (implementado sobre Redis)
+- `check_rate_limit`: Redis — inyectado en endpoints de análisis y reporte

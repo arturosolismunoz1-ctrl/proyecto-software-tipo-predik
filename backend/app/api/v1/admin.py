@@ -50,7 +50,7 @@ async def bd_status(db=Depends(get_db), _=Depends(require_admin)):
         ("raw_data.denue_establishments", 100_000, "DENUE establecimientos"),
         ("raw_data.ageb_geometries",      10_000,  "AGEBs geometrias (MGN)"),
         ("raw_data.ageb_demographics",    10_000,  "AGEBs censo 2020"),
-        ("cube.commercial_density_h3",    1_000,   "Cubo densidad H3"),
+        ("raw_data.manzana_vivienda",      1_000,  "Manzanas vivienda"),
     ]
 
     tablas = []

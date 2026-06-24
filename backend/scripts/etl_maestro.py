@@ -251,9 +251,8 @@ async def descargar_estado_denue(
                       f"{ext:>6} registros | {pags} pags")
 
         if total_cargados > 0:
-            agregadas = etl.aggregate_h3(db, h3_resolution)
             print(f"    [OK] {nombre_estado}: {total_extraidos:,} establecimientos | "
-                  f"{total_paginas} paginas | {agregadas} celdas H3")
+                  f"{total_paginas} paginas")
         else:
             print(f"    [-] {nombre_estado}: 0 establecimientos nuevos")
 

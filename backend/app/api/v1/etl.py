@@ -33,7 +33,6 @@ class ETLRunRequest(BaseModel):
     municipio: Optional[str] = None  # 3-digit code, e.g. "033" for Ecatepec
     keyword: str = ""
     max_records: int = 100
-    h3_resolution: int = 9
     polygon: Optional[Dict[str, Any]] = None
 
 
@@ -58,7 +57,6 @@ async def run_etl(
 
     etl = etl_cls()
     run_params: Dict[str, Any] = {
-        "resolution": req.h3_resolution,
         "estado": req.estado,
         "keyword": req.keyword,
         "max_records": req.max_records,
@@ -75,9 +73,6 @@ async def run_etl(
 
 class ETLMaestroRequest(BaseModel):
     estados: Optional[List[str]] = None   # None = todos los 32 estados
-    h3_resolution: int = 9
-    # keyword vacío = iterar sobre SECTORES_DENUE (todos los giros)
-    # keyword específico = solo ese sector (ej: "restaurante")
     keyword: str = ""
 
 
@@ -116,7 +111,7 @@ async def _denue_get_page(url: str) -> list:
 
 
 async def _descargar_estado_paginado(
-    db, etl: DenueETL, estado: str, keyword: str, h3_resolution: int
+    db, etl: DenueETL, estado: str, keyword: str
 ) -> ETLMaestroEstadoResult:
     """
     Descarga todos los establecimientos de un estado.
@@ -156,9 +151,6 @@ async def _descargar_estado_paginado(
 
             await asyncio.sleep(0.3)
 
-    if total_cargados > 0:
-        etl.aggregate_h3(db, h3_resolution)
-
     return ETLMaestroEstadoResult(
         estado=estado,
         nombre=_ESTADOS.get(estado, estado),
@@ -191,7 +183,7 @@ async def run_etl_maestro(
 
     for estado in estados_a_procesar:
         resultado = await _descargar_estado_paginado(
-            db, etl, estado.zfill(2), req.keyword, req.h3_resolution
+            db, etl, estado.zfill(2), req.keyword
         )
         detalle.append(resultado)
         total += resultado.extraidos

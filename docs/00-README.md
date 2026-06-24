@@ -17,6 +17,7 @@ Plataforma de inteligencia geoespacial y geomarketing (clon funcional inspirado 
 | [09-data-lake-y-data-mart.md](./09-data-lake-y-data-mart.md) | Estrategia de datos a largo plazo |
 | [10-bitacora-de-avance.md](./10-bitacora-de-avance.md) | Registro de sesiones, decisiones y cambios del proyecto |
 | [11-plan-sprints.md](./11-plan-sprints.md) | Plan de sprints ágil — fases, DoD, KPIs y dependencias |
+| [12-reporte-avance-pm.md](./12-reporte-avance-pm.md) | Reporte PM/SCRUM — avance por etapa, ruta crítica, riesgos (corte 2026-06-24) |
 
 ## Convenciones de este repositorio
 

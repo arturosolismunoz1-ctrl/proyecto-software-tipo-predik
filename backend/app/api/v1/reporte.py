@@ -87,7 +87,6 @@ class ReporteRequest(BaseModel):
         ),
     )
     max_records: int = Field(default=2500, ge=1, le=2500)
-    h3_resolution: int = Field(default=9, ge=7, le=11)
     ejecutar_etl: bool = Field(
         default=True,
         description="False para usar datos ya cargados en DB (omite la llamada a INEGI)",
@@ -126,7 +125,6 @@ async def generar_reporte_endpoint(
         formato=request.formato,
         clasificacion_hexagonos=request.clasificacion_hexagonos,
         max_records=request.max_records,
-        h3_resolution=request.h3_resolution,
         ejecutar_etl=request.ejecutar_etl,
         nivel_geografico=request.nivel_geografico,
     )
@@ -168,7 +166,6 @@ async def preview_reporte_endpoint(
         capas=capas,
         clasificacion_hexagonos=request.clasificacion_hexagonos,
         max_records=request.max_records,
-        h3_resolution=request.h3_resolution,
         ejecutar_etl=request.ejecutar_etl,
         nivel_geografico=request.nivel_geografico,
     )

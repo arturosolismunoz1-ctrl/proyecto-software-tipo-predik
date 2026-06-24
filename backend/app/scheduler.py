@@ -5,8 +5,7 @@ La hora de ejecución se configura con SCHEDULER_SYNC_TIME (formato HH:MM, UTC).
 Default: 08:00 UTC (02:00 Ciudad de México en horario de verano).
 
 Tareas programadas:
-  1. ETL DENUE — extrae establecimientos y reconstruye cube.commercial_density_h3.
-  2. ETL Población — agrega ageb_demographics en cube.population_density_h3.
+  1. ETL DENUE — extrae y actualiza raw_data.denue_establishments.
 """
 import asyncio
 import logging
@@ -16,7 +15,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from app.db import SessionLocal
-from app.etl.poblacion import run_poblacion_etl
 
 logger = logging.getLogger(__name__)
 
@@ -32,37 +30,20 @@ def _sync_time() -> tuple[int, int]:
         return 8, 0
 
 
-# ── Tareas ────────────────────────────────────────────────────────────────────
-
-def _job_etl_poblacion() -> None:
-    logger.info("[scheduler] Iniciando ETL Población → cube.population_density_h3")
-    db = SessionLocal()
-    try:
-        count = run_poblacion_etl(db)
-        logger.info("[scheduler] ETL Población completado: %d celdas H3 procesadas", count)
-    except Exception as exc:
-        logger.error("[scheduler] ETL Población falló: %s", exc)
-    finally:
-        db.close()
-
-
 def _job_etl_denue() -> None:
-    """Lanza el ETL de DENUE de forma async desde un hilo síncrono."""
     from app.etl.denue import DenueETL
 
-    logger.info("[scheduler] Iniciando ETL DENUE → cube.commercial_density_h3")
+    logger.info("[scheduler] Iniciando ETL DENUE -> raw_data.denue_establishments")
     db = SessionLocal()
     try:
         etl = DenueETL()
         count = asyncio.run(etl.run(db=db))
-        logger.info("[scheduler] ETL DENUE completado: %d celdas H3 procesadas", count)
+        logger.info("[scheduler] ETL DENUE completado: %d registros procesados", count.get("loaded", 0))
     except Exception as exc:
-        logger.error("[scheduler] ETL DENUE falló: %s", exc)
+        logger.error("[scheduler] ETL DENUE fallo: %s", exc)
     finally:
         db.close()
 
-
-# ── Ciclo de vida ─────────────────────────────────────────────────────────────
 
 def start_scheduler() -> None:
     global _scheduler
@@ -79,18 +60,9 @@ def start_scheduler() -> None:
         id="etl_denue",
         replace_existing=True,
     )
-    _scheduler.add_job(
-        _job_etl_poblacion,
-        CronTrigger(hour=hour, minute=minute + 15),  # 15 min después del DENUE
-        id="etl_poblacion",
-        replace_existing=True,
-    )
 
     _scheduler.start()
-    logger.info(
-        "[scheduler] Activo — ETL DENUE %02d:%02d UTC, ETL Población %02d:%02d UTC",
-        hour, minute, hour, (minute + 15) % 60,
-    )
+    logger.info("[scheduler] Activo — ETL DENUE %02d:%02d UTC", hour, minute)
 
 
 def stop_scheduler() -> None:
