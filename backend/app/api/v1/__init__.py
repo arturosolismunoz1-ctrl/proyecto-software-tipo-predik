@@ -7,6 +7,7 @@ from .etl import router as etl_router
 from .reporte import router as reporte_router
 from .catalogo import router as catalogo_router
 from .bie import router as bie_router
+from .cron import router as cron_router
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(auth_router,     prefix="/auth",     tags=["auth"])
@@ -17,3 +18,4 @@ router.include_router(etl_router,      prefix="/admin",    tags=["etl"])
 router.include_router(reporte_router,  prefix="/reporte",  tags=["reporte"])
 router.include_router(catalogo_router, prefix="/catalogo", tags=["catalogo"])
 router.include_router(bie_router,      prefix="/bie",      tags=["bie"])
+router.include_router(cron_router,     prefix="/cron",     tags=["cron"])

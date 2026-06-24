@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -9,14 +10,20 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 from app.api.v1 import router as api_router
 from app.middleware import QueryLogMiddleware
-from app.scheduler import start_scheduler, stop_scheduler
+
+try:
+    from app.scheduler import start_scheduler, stop_scheduler
+except ImportError:
+    start_scheduler = stop_scheduler = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    start_scheduler()
+    if start_scheduler:
+        start_scheduler()
     yield
-    stop_scheduler()
+    if stop_scheduler:
+        stop_scheduler()
 
 
 app = FastAPI(
@@ -25,13 +32,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173",
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
