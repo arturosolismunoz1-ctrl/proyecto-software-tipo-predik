@@ -13,4 +13,4 @@ python-jose[cryptography]>=3.3.0
 pytest-asyncio>=0.24.0
 pyshp>=2.3.0
 shapely>=2.0.0
-apscheduler>=3.10.0
+# apscheduler>=3.10.0  # Opcional para desarrollo local; en produccion se usa pg_cron

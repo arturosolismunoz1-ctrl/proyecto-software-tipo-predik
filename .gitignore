@@ -1,6 +1,7 @@
 # --- Secretos y configuración local (NUNCA se sube) ---
 .env
 .env.local
+.env.production
 .env.*.local
 *.pem
 *.key

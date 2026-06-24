@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: predik-api
+    env: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 2
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://predik-geo.vercel.app
+      - key: RATE_LIMIT_ENABLED
+        value: true
+      - key: LOG_LEVEL
+        value: INFO
+      - key: CRON_SECRET
+        generateValue: true
+      - key: INEGI_DENUE_TOKEN
+        sync: false
+      - key: INEGI_BIE_API_TOKEN
+        sync: false
