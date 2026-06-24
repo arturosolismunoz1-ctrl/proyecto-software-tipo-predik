@@ -47,14 +47,14 @@ ESTADOS = {
     "09": "09_ciudaddemexico",        "10": "10_durango",
     "11": "11_guanajuato",            "12": "12_guerrero",
     "13": "13_hidalgo",               "14": "14_jalisco",
-    "15": "15_mexico",                "16": "16_michoacan",
+    "15": "15_mexico",                "16": "16_michoacandeocampo",
     "17": "17_morelos",               "18": "18_nayarit",
     "19": "19_nuevoleon",             "20": "20_oaxaca",
     "21": "21_puebla",                "22": "22_queretaro",
     "23": "23_quintanaroo",           "24": "24_sanluispotosi",
     "25": "25_sinaloa",               "26": "26_sonora",
     "27": "27_tabasco",               "28": "28_tamaulipas",
-    "29": "29_tlaxcala",              "30": "30_veracruz",
+    "29": "29_tlaxcala",              "30": "30_veracruzignaciodelallave",
     "31": "31_yucatan",               "32": "32_zacatecas",
 }
 
