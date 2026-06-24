@@ -51,3 +51,16 @@ app.include_router(api_router)
 @app.get("/health", tags=["health"])
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/debug/db", tags=["health"])
+def debug_db() -> dict:
+    from sqlalchemy import text
+    from app.db import SessionLocal
+    try:
+        db = SessionLocal()
+        result = db.execute(text("SELECT 1")).scalar()
+        db.close()
+        return {"status": "ok", "result": result}
+    except Exception as e:
+        return {"status": "error", "error": str(e), "type": type(e).__name__}
