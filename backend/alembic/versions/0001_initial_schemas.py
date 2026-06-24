@@ -17,8 +17,6 @@ depends_on = None
 def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
     op.execute("CREATE EXTENSION IF NOT EXISTS postgis CASCADE")
-    op.execute("CREATE EXTENSION IF NOT EXISTS h3 CASCADE")
-    op.execute("CREATE EXTENSION IF NOT EXISTS h3_postgis CASCADE")
 
     op.execute("CREATE SCHEMA IF NOT EXISTS core")
     op.execute("CREATE SCHEMA IF NOT EXISTS raw_data")

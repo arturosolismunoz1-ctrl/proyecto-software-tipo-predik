@@ -5,7 +5,8 @@ from alembic import context
 
 config = context.config
 if os.getenv("DATABASE_URL"):
-    config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL"))
+    # ConfigParser interpreta % como interpolación; escapar para evitar ValueError
+    config.set_main_option("sqlalchemy.url", os.getenv("DATABASE_URL").replace("%", "%%"))
 
 fileConfig(config.config_file_name)
 
