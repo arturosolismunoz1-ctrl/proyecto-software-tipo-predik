@@ -26,7 +26,7 @@ import openpyxl
 from geoalchemy2 import functions as geo_funcs
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from sqlalchemy import func, or_, select
+from sqlalchemy import Text, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.etl.denue import DenueETL
@@ -281,6 +281,8 @@ def query_manzanas_en_poligono(
         .subquery()
     )
 
+    # indicadores es JSON: no tiene operador de igualdad en PG, no puede ir en GROUP BY.
+    # Usamos max() con cast a text para obtenerlo como agregado.
     stmt = (
         select(
             ManzanaVivienda.cvegeo,
@@ -291,7 +293,7 @@ def query_manzanas_en_poligono(
             ManzanaVivienda.con_agua,
             ManzanaVivienda.con_dren,
             ManzanaVivienda.con_luz,
-            ManzanaVivienda.indicadores,
+            func.max(cast(ManzanaVivienda.indicadores, Text)).label("indicadores_text"),
             func.ST_AsGeoJSON(ManzanaVivienda.geom).label("geom"),
             func.count(denue_en_zona.c.id).label("num_establecimientos"),
         )
@@ -309,14 +311,18 @@ def query_manzanas_en_poligono(
             ManzanaVivienda.con_agua,
             ManzanaVivienda.con_dren,
             ManzanaVivienda.con_luz,
-            ManzanaVivienda.indicadores,
             ManzanaVivienda.geom,
         )
     )
 
     rows = db.execute(stmt).all()
-    return [
-        {
+    result = []
+    for r in rows:
+        try:
+            indicadores = json.loads(r.indicadores_text) if r.indicadores_text else {}
+        except Exception:
+            indicadores = {}
+        result.append({
             "cvegeo":     r.cvegeo,
             "clave_ent":  r.clave_ent or "",
             "clave_mun":  r.clave_mun or "",
@@ -326,12 +332,11 @@ def query_manzanas_en_poligono(
             "con_agua":   r.con_agua or 0,
             "con_dren":   r.con_dren or 0,
             "con_luz":    r.con_luz or 0,
-            "graproes":   float((r.indicadores or {}).get("GRAPROES", 0) or 0),
+            "graproes":   float(indicadores.get("GRAPROES", 0) or 0),
             "cantidad":   int(r.num_establecimientos),
             "intensidad": 0.0,
-        }
-        for r in rows
-    ]
+        })
+    return result
 
 
 # ── 3c. Clasificacion por infraestructura (manzanas) ─────────────────────────
@@ -821,9 +826,10 @@ async def preview_reporte(
             if manzanas:
                 hexagonos_raw = _normalizar_intensidad(manzanas)
                 usa_manzanas = True
-                usa_agebs = True  # reutilizamos flag para "usa zonas reales"
+                usa_agebs = True
         except Exception:
             logger.exception("Error consultando manzanas en polígono")
+            db.rollback()
 
     if not usa_manzanas:
         try:
@@ -833,6 +839,7 @@ async def preview_reporte(
                 usa_agebs = True
         except Exception:
             logger.exception("Error consultando AGEBs en polígono")
+            db.rollback()
 
     if not usa_agebs:
         try:
@@ -840,6 +847,9 @@ async def preview_reporte(
             hexagonos_raw = result.get("celdas_heatmap", [])
         except ValueError:
             pass
+        except Exception:
+            logger.exception("Error consultando H3 en polígono")
+            db.rollback()
 
     capas_con_puntos = []
     for capa in capas:
@@ -992,6 +1002,7 @@ async def generar_reporte(
                 usa_agebs = True
         except Exception:
             logger.exception("Error consultando manzanas en polígono")
+            db.rollback()
 
     if not usa_manzanas:
         try:
@@ -1001,6 +1012,7 @@ async def generar_reporte(
                 usa_agebs = True
         except Exception:
             logger.exception("Error consultando AGEBs en polígono")
+            db.rollback()
 
     if not usa_agebs:
         try:
@@ -1008,6 +1020,9 @@ async def generar_reporte(
             hexagonos_raw = result.get("celdas_heatmap", [])
         except ValueError:
             pass
+        except Exception:
+            logger.exception("Error consultando H3 en polígono")
+            db.rollback()
 
     # 3. Puntos por capa
     capas_con_puntos = []
