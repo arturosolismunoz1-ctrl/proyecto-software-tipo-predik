@@ -55,12 +55,25 @@ async def health() -> dict:
 
 @app.get("/debug/db", tags=["health"])
 def debug_db() -> dict:
+    import os
     from sqlalchemy import text
-    from app.db import SessionLocal
+    from app.db import SessionLocal, DATABASE_URL
+    raw = os.getenv("DATABASE_URL", "NOT_SET")
+    # Oculta password para mostrarlo seguro
+    def hide_pass(url: str) -> str:
+        try:
+            at = url.rindex("@")
+            scheme_end = url.index("://") + 3
+            user_pass = url[scheme_end:at]
+            user = user_pass.split(":")[0]
+            return url[:scheme_end] + user + ":***@" + url[at+1:]
+        except Exception:
+            return url
     try:
         db = SessionLocal()
         result = db.execute(text("SELECT 1")).scalar()
         db.close()
-        return {"status": "ok", "result": result}
+        return {"status": "ok", "result": result, "url_used": hide_pass(DATABASE_URL)}
     except Exception as e:
-        return {"status": "error", "error": str(e), "type": type(e).__name__}
+        return {"status": "error", "error": str(e), "type": type(e).__name__,
+                "env_url": hide_pass(raw), "url_used": hide_pass(DATABASE_URL)}
