@@ -62,7 +62,7 @@ function MapFlyTo({ target }: { target: FlyTarget | null }) {
 // ── BdBadge ───────────────────────────────────────────────────────────────────
 
 function BdBadge({ count, label }: { count: number; label: string }) {
-  const estado = count === 0 ? 'vacia' : count < 10_000 ? 'parcial' : 'ok'
+  const estado = count === 0 ? 'vacia' : count < 500 ? 'parcial' : 'ok'
   const colors = {
     vacia:   'bg-red-100 text-red-700',
     parcial: 'bg-yellow-100 text-yellow-700',

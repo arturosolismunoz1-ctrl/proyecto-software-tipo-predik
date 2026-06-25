@@ -5,11 +5,19 @@ interface BdStatus {
   ageb_geometries:   number
   ageb_demographics: number
   denue_total:       number
-  estados_con_denue: number
 }
 
 interface Props {
   onClose: () => void
+}
+
+function parseStatus(raw: { tablas?: { tabla: string; registros: number }[] }): BdStatus {
+  const t = raw.tablas ?? []
+  return {
+    ageb_geometries:   t.find(r => r.tabla.includes('geometries'))?.registros   ?? 0,
+    ageb_demographics: t.find(r => r.tabla.includes('demographics'))?.registros ?? 0,
+    denue_total:       t.find(r => r.tabla.includes('denue'))?.registros        ?? 0,
+  }
 }
 
 export function AdminPanel({ onClose }: Props) {
@@ -19,7 +27,7 @@ export function AdminPanel({ onClose }: Props) {
 
   useEffect(() => {
     apiBdStatus()
-      .then(d => setStatus(d as BdStatus))
+      .then(d => setStatus(parseStatus(d)))
       .catch(e => setError(String(e)))
       .finally(() => setLoading(false))
   }, [])
@@ -30,25 +38,27 @@ export function AdminPanel({ onClose }: Props) {
       value: status?.ageb_geometries,
       meta: status?.ageb_geometries
         ? status.ageb_geometries > 50_000
-          ? '✓ Cargado (nacional)'
-          : status.ageb_geometries > 0
-          ? '⚠ Parcial'
-          : '✗ Vacío'
-        : '...',
+          ? '✓ Nacional (32 estados)'
+          : status.ageb_geometries > 1_000
+          ? '✓ Cargado'
+          : '⚠ Parcial'
+        : '✗ Vacío',
     },
     {
       label: 'AGEBs (demografía)',
       value: status?.ageb_demographics,
       meta: status?.ageb_demographics
         ? status.ageb_demographics > 50_000
-          ? '✓ Completo'
+          ? '✓ Nacional (32 estados)'
+          : status.ageb_demographics > 1_000
+          ? '✓ Cargado'
           : '⚠ Parcial'
         : '✗ Vacío',
     },
     {
       label: 'Establecimientos DENUE',
       value: status?.denue_total,
-      meta: status?.denue_total ? `${status.estados_con_denue ?? '?'} estados` : 'Vacío',
+      meta: status?.denue_total ? '✓ Cargado' : '✗ Vacío',
     },
   ]
 
@@ -107,7 +117,7 @@ export function AdminPanel({ onClose }: Props) {
               <div className="bg-white/5 rounded-lg px-4 py-3">
                 <div className="flex items-center gap-2 mb-1">
                   <span className={
-                    (status?.ageb_geometries ?? 0) > 50_000
+                    (status?.ageb_geometries ?? 0) > 1_000
                       ? 'text-green-400' : 'text-yellow-400'
                   }>●</span>
                   <span className="font-medium text-white">Geometrías MGN 2025</span>
@@ -124,7 +134,7 @@ python backend/scripts/etl_mgn_maestro.py --solo-mgn
               <div className="bg-white/5 rounded-lg px-4 py-3">
                 <div className="flex items-center gap-2 mb-1">
                   <span className={
-                    (status?.ageb_demographics ?? 0) > 50_000
+                    (status?.ageb_demographics ?? 0) > 1_000
                       ? 'text-green-400' : 'text-yellow-400'
                   }>●</span>
                   <span className="font-medium text-white">Demografía Censo 2020</span>

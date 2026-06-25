@@ -1,13 +1,15 @@
-// Vercel Serverless Function — mantiene el backend de Render despierto
-// Se ejecuta cada 10 minutos via vercel.json crons
-export default async function handler(req, res) {
+// Edge Function — mantiene Render despierto (timeout 30s en Edge vs 10s en Serverless)
+export const config = { runtime: 'edge' }
+
+export default async function handler() {
   try {
     const r = await fetch(
       'https://proyecto-software-tipo-predik.onrender.com/health',
-      { signal: AbortSignal.timeout(30000) }
+      { signal: AbortSignal.timeout(25000) }
     )
-    res.status(200).json({ ok: true, backend: r.status, ts: new Date().toISOString() })
+    const body = { ok: true, backend: r.status, ts: new Date().toISOString() }
+    return Response.json(body)
   } catch (e) {
-    res.status(200).json({ ok: false, error: e.message, ts: new Date().toISOString() })
+    return Response.json({ ok: false, error: e.message, ts: new Date().toISOString() })
   }
 }
