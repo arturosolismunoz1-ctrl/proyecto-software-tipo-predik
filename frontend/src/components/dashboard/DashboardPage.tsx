@@ -10,14 +10,16 @@ import { apiHistorial } from '../../api/client'
 import 'react-grid-layout/css/styles.css'
 import 'react-resizable/css/styles.css'
 
-// react-grid-layout uses CommonJS `export =` — access submodules via default import cast
+// react-grid-layout is CJS — Rollup may wrap it in { default: module.exports }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-import _rgl from 'react-grid-layout'
+import _rglImport from 'react-grid-layout'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const rglAny = _rgl as any
-const Responsive = rglAny.Responsive as React.ComponentType<React.PropsWithChildren<Record<string, unknown>>>
-const WidthProvider = rglAny.WidthProvider as (c: React.ComponentType<React.PropsWithChildren<Record<string, unknown>>>) => React.ComponentType<React.PropsWithChildren<Record<string, unknown>>>
-const ResponsiveGridLayout = WidthProvider(Responsive)
+const _rglMod = ((_rglImport as any).default ?? _rglImport) as any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyComponent = React.ComponentType<any>
+const RglResponsive  = _rglMod.Responsive  as AnyComponent
+const RglWidthProvider = _rglMod.WidthProvider as (c: AnyComponent) => AnyComponent
+const ResponsiveGridLayout = RglWidthProvider(RglResponsive)
 
 // ── Layouts ───────────────────────────────────────────────────────────────────
 
