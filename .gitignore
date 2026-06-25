@@ -56,6 +56,11 @@ resultados/
 # --- Scripts de migración — checkpoint temporal ---
 backend/scripts/.migrate_checkpoint.json
 
+# --- Snapshots y exports locales ---
+proyecto_snapshot.txt
+estructura.txt
+migrate_*.log
+
 # --- Prohibido explícitamente por convención del proyecto ---
 *final*.zip
 *definitivo*
