@@ -13,7 +13,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: CORS_ORIGINS
-        value: https://predik-geo.vercel.app
+        value: https://proyecto-software-tipo-predik.vercel.app
       - key: RATE_LIMIT_ENABLED
         value: true
       - key: LOG_LEVEL
