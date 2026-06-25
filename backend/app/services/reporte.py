@@ -169,6 +169,8 @@ def query_puntos_capa(
 def query_agebs_en_poligono(
     db: Session,
     polygon: Dict[str, Any],
+    graproes_min: Optional[float] = None,
+    graproes_max: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
     """
     Consulta AGEBs que intersectan el polígono con conteo de establecimientos DENUE.
@@ -227,6 +229,11 @@ def query_agebs_en_poligono(
             AgebDemographics.graproes,
         )
     )
+
+    if graproes_min is not None:
+        stmt = stmt.where(AgebDemographics.graproes >= graproes_min)
+    if graproes_max is not None:
+        stmt = stmt.where(AgebDemographics.graproes <= graproes_max)
 
     rows = db.execute(stmt).all()
     return [
@@ -773,6 +780,310 @@ def _kml_to_hex(kml: str) -> str:
     if len(kml) == 8:
         return f"#{kml[6:8]}{kml[4:6]}{kml[2:4]}"
     return "#888888"
+
+
+# ── Wizard: helpers para el caso de uso 1 (análisis de competencia) ───────────
+
+def bbox_municipios(
+    db: Session,
+    clave_estado: str,
+    claves_municipios: List[str],
+) -> Dict[str, Any]:
+    """
+    Devuelve un Polygon GeoJSON que envuelve todos los municipios indicados.
+    Usa ST_Extent sobre ageb_geometries filtrando por clave_ent + clave_mun.
+    """
+    from sqlalchemy import text as sa_text
+    ent = clave_estado.zfill(2)
+    claves = [c.zfill(3) for c in claves_municipios]
+    placeholders = ", ".join([f":mun{i}" for i in range(len(claves))])
+    params: Dict[str, Any] = {"ent": ent}
+    for i, c in enumerate(claves):
+        params[f"mun{i}"] = c
+
+    row = db.execute(
+        sa_text(f"""
+            SELECT
+                ST_XMin(ST_Extent(geom)) AS minx,
+                ST_YMin(ST_Extent(geom)) AS miny,
+                ST_XMax(ST_Extent(geom)) AS maxx,
+                ST_YMax(ST_Extent(geom)) AS maxy
+            FROM raw_data.ageb_geometries
+            WHERE clave_ent = :ent AND clave_mun IN ({placeholders})
+        """),
+        params,
+    ).fetchone()
+
+    if not row or row.minx is None:
+        raise ValueError(
+            f"No se encontraron AGEBs para estado={ent} municipios={claves}. "
+            "Verifica que el ETL ya fue ejecutado para estos municipios."
+        )
+
+    return {
+        "type": "Polygon",
+        "coordinates": [[
+            [row.minx, row.miny],
+            [row.maxx, row.miny],
+            [row.maxx, row.maxy],
+            [row.minx, row.maxy],
+            [row.minx, row.miny],
+        ]],
+    }
+
+
+def query_puntos_indirecta(
+    db: Session,
+    polygon: Dict[str, Any],
+    scian_prefix: str,
+    exclude_keywords: List[str],
+) -> List[Dict[str, Any]]:
+    """
+    Establecimientos con el mismo giro SCIAN que NO coinciden con ninguna
+    de las marcas (propia ni competidores directos). Son la competencia indirecta.
+    """
+    polygon_json = json.dumps(polygon)
+    poly_geom = geo_funcs.ST_GeomFromGeoJSON(polygon_json)
+
+    stmt = select(
+        DenueEstablishment.nombre,
+        DenueEstablishment.clase_actividad,
+        DenueEstablishment.codigo_scian,
+        DenueEstablishment.estrato_personal,
+        DenueEstablishment.colonia,
+        DenueEstablishment.municipio,
+        func.ST_X(DenueEstablishment.geom).label("lon"),
+        func.ST_Y(DenueEstablishment.geom).label("lat"),
+    ).where(
+        DenueEstablishment.geom.isnot(None),
+        geo_funcs.ST_Intersects(DenueEstablishment.geom, poly_geom),
+        DenueEstablishment.codigo_scian.like(f"{scian_prefix}%"),
+    )
+
+    for kw in exclude_keywords:
+        if kw and kw.strip():
+            stmt = stmt.where(
+                func.lower(DenueEstablishment.nombre).not_like(f"%{kw.lower().strip()}%")
+            )
+
+    rows = db.execute(stmt).all()
+    return [
+        {
+            "nombre":          r.nombre or "",
+            "clase_actividad": r.clase_actividad or "",
+            "codigo_scian":    r.codigo_scian or "",
+            "estrato_personal": r.estrato_personal or "",
+            "colonia":         r.colonia or "",
+            "municipio":       r.municipio or "",
+            "lat":             float(r.lat),
+            "lon":             float(r.lon),
+        }
+        for r in rows if r.lat and r.lon
+    ]
+
+
+def calcular_hubs(
+    todos_puntos: List[Dict[str, Any]],
+    radio_metros: int = 150,
+) -> List[Dict[str, Any]]:
+    """
+    Agrupa puntos de competencia directa en clusters según proximidad espacial.
+    Devuelve polígonos GeoJSON (buffer convex-hull) para los clusters con 2+ puntos.
+    """
+    import math
+    if not todos_puntos:
+        return []
+
+    # 1 grado ≈ 111,320 m. El factor cos() corrige la longitud en lat media (~23°N México).
+    pts = [Point(p["lon"], p["lat"]) for p in todos_puntos]
+    n = len(pts)
+    radio_deg = radio_metros / 111_320
+
+    # Union-Find simple
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            dlat = pts[i].y - pts[j].y
+            cos_lat = math.cos(math.radians((pts[i].y + pts[j].y) / 2))
+            dlon = (pts[i].x - pts[j].x) * cos_lat
+            if math.hypot(dlat, dlon) <= radio_deg:
+                ri, rj = find(i), find(j)
+                if ri != rj:
+                    parent[ri] = rj
+
+    clusters: Dict[int, List[int]] = {}
+    for i in range(n):
+        r = find(i)
+        clusters.setdefault(r, []).append(i)
+
+    hubs = []
+    for indices in clusters.values():
+        if len(indices) < 2:
+            continue
+        cluster_pts = [pts[k] for k in indices]
+        from shapely.geometry import MultiPoint as SMultiPoint
+        mp = SMultiPoint([(p.x, p.y) for p in cluster_pts])
+        hull = mp.convex_hull.buffer(radio_deg * 0.5, resolution=8)
+        hubs.append({
+            "n_puntos": len(indices),
+            "geom":     json.dumps(hull.__geo_interface__),
+        })
+    return hubs
+
+
+def generar_kmz_maestro(
+    nombre: str,
+    zonas: List[Dict],
+    capas_directa: List[Dict],
+    puntos_indirecta: List[Dict[str, Any]],
+    hubs: List[Dict],
+    radio_hub: int,
+) -> bytes:
+    """
+    Genera KMZ con estructura maestro de 4 carpetas:
+      1. ZONAS — AGEBs/manzanas coloreados por oportunidad
+      2. MALLA Xm — hubs de competencia directa
+      3. COMPETENCIA DIRECTA por marca
+      4. Competencia INDIRECTA (mismo giro, no en listas de marcas)
+    """
+    colores_usados = {z["color"] for z in zonas}
+
+    L: List[str] = []
+    L.append('<?xml version="1.0" encoding="UTF-8"?>')
+    L.append('<kml xmlns="http://www.opengis.net/kml/2.2">')
+    L.append('<Document>')
+    L.append(f'  <name>{escape(nombre)}</name>')
+
+    # Estilos zonas
+    for color in colores_usados:
+        L.extend(_kml_estilo_hex(f"hex_{color}", color))
+
+    # Estilos marcas directas
+    for capa in capas_directa:
+        sid = f"direct_{capa['label'].lower().replace(' ', '_')[:20]}"
+        capa["_sid"] = sid
+        L.extend(_kml_estilo_punto(sid, capa.get("color", "blue"), capa.get("icon", "circle")))
+
+    # Estilo indirecta (puntos pequeños rojos)
+    L.extend([
+        '  <Style id="indirect">',
+        '    <IconStyle><color>FF0000FF</color><scale>0.6</scale>',
+        '      <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>',
+        '    </IconStyle>',
+        '    <LabelStyle><scale>0</scale></LabelStyle>',
+        '  </Style>',
+    ])
+
+    # Estilo hubs (polígono naranja semi-transparente)
+    L.extend([
+        '  <Style id="hub">',
+        '    <LineStyle><color>FF0066FF</color><width>1.5</width></LineStyle>',
+        '    <PolyStyle><color>660066FF</color></PolyStyle>',
+        '  </Style>',
+    ])
+
+    # ── Carpeta 1: ZONAS ──────────────────────────────────────────────────────
+    if zonas:
+        L.append('  <Folder>')
+        L.append(f'    <name>ZONAS ({len(zonas)})</name>')
+        for z in sorted(zonas, key=lambda x: x.get("intensidad", 0)):
+            coords = _geojson_to_kml_coords(z.get("geom", ""))
+            if not coords:
+                continue
+            L += [
+                '    <Placemark>',
+                f'      <name>{escape(z.get("label", ""))}</name>',
+                f'      <styleUrl>#hex_{z["color"]}</styleUrl>',
+                '      <Polygon><tessellate>1</tessellate>',
+                '        <outerBoundaryIs><LinearRing>',
+                f'          <coordinates>{coords}</coordinates>',
+                '        </LinearRing></outerBoundaryIs>',
+                '      </Polygon>',
+                '    </Placemark>',
+            ]
+        L.append('  </Folder>')
+
+    # ── Carpeta 2: MALLA hubs ────────────────────────────────────────────────
+    if hubs:
+        L.append('  <Folder>')
+        L.append(f'    <name>MALLA {radio_hub}m — HUBS competencia ({len(hubs)})</name>')
+        for h in hubs:
+            coords = _geojson_to_kml_coords(h["geom"])
+            if not coords:
+                continue
+            L += [
+                '    <Placemark>',
+                f'      <name>Hub {h["n_puntos"]} puntos</name>',
+                '      <styleUrl>#hub</styleUrl>',
+                '      <Polygon><tessellate>1</tessellate>',
+                '        <outerBoundaryIs><LinearRing>',
+                f'          <coordinates>{coords}</coordinates>',
+                '        </LinearRing></outerBoundaryIs>',
+                '      </Polygon>',
+                '    </Placemark>',
+            ]
+        L.append('  </Folder>')
+
+    # ── Carpeta 3: COMPETENCIA DIRECTA por marca ──────────────────────────────
+    if capas_directa:
+        L.append('  <Folder>')
+        L.append(f'    <name>COMPETENCIA DIRECTA</name>')
+        for capa in capas_directa:
+            puntos = capa.get("puntos", [])
+            L.append('    <Folder>')
+            L.append(f'      <name>{escape(capa["label"])} ({len(puntos)})</name>')
+            for p in puntos:
+                desc = (
+                    f"Clase: {escape(p['clase_actividad'])}<br/>"
+                    f"SCIAN: {escape(p['codigo_scian'])}<br/>"
+                    f"Personal: {escape(p['estrato_personal'])}<br/>"
+                    f"Colonia: {escape(p['colonia'])}"
+                )
+                L += [
+                    '      <Placemark>',
+                    f'        <name>{escape(p["nombre"])}</name>',
+                    f'        <description><![CDATA[{desc}]]></description>',
+                    f'        <styleUrl>#{capa["_sid"]}</styleUrl>',
+                    '        <Point>',
+                    f'          <coordinates>{p["lon"]:.6f},{p["lat"]:.6f},0</coordinates>',
+                    '        </Point>',
+                    '      </Placemark>',
+                ]
+            L.append('    </Folder>')
+        L.append('  </Folder>')
+
+    # ── Carpeta 4: Competencia INDIRECTA ─────────────────────────────────────
+    if puntos_indirecta:
+        L.append('  <Folder>')
+        L.append(f'    <name>Competencia INDIRECTA — independientes ({len(puntos_indirecta)})</name>')
+        for p in puntos_indirecta:
+            L += [
+                '    <Placemark>',
+                f'      <name>{escape(p["nombre"])}</name>',
+                f'      <description><![CDATA[Clase: {escape(p["clase_actividad"])}<br/>Colonia: {escape(p["colonia"])}]]></description>',
+                '      <styleUrl>#indirect</styleUrl>',
+                '      <Point>',
+                f'        <coordinates>{p["lon"]:.6f},{p["lat"]:.6f},0</coordinates>',
+                '      </Point>',
+                '    </Placemark>',
+            ]
+        L.append('  </Folder>')
+
+    L.append('</Document>')
+    L.append('</kml>')
+
+    kml_bytes = '\n'.join(L).encode('utf-8')
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr('doc.kml', kml_bytes)
+    return buf.getvalue()
 
 
 # ── Preview (JSON para visualización en mapa) ──────────────────────────────────

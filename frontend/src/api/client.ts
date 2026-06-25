@@ -197,3 +197,52 @@ export async function apiBieResumen(claveEstado: string): Promise<BieResumen> {
   if (!res.ok) throw new Error('Error cargando indicadores BIE')
   return res.json()
 }
+
+// ── Wizard Caso 1 — Análisis de competencia ───────────────────────────────────
+
+export interface AnalisisCompetenciaPayload {
+  clave_estado: string
+  claves_municipios: string[]
+  graproes_min?: number | null
+  graproes_max?: number | null
+  marca_propia?: string
+  scian_giro?: string
+  competencia_directa: string[]
+  incluir_sucursales: boolean
+  incluir_hubs: boolean
+  incluir_zonas_blancas: boolean
+  radio_hub_metros: number
+  nivel_geografico: 'ageb' | 'manzana'
+  max_records?: number
+}
+
+export async function apiAnalisisCompetenciaPreview(
+  payload: AnalisisCompetenciaPayload
+) {
+  const res = await req('/analisis/competencia', {
+    method: 'POST',
+    body: JSON.stringify({ ...payload, formato_salida: 'geojson' }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Error ${res.status}: ${text.slice(0, 400)}`)
+  }
+  return res.json()
+}
+
+export async function apiAnalisisCompetenciaKmz(
+  payload: AnalisisCompetenciaPayload
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await req('/analisis/competencia', {
+    method: 'POST',
+    body: JSON.stringify({ ...payload, formato_salida: 'kmz' }),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Error ${res.status}: ${text.slice(0, 400)}`)
+  }
+  const disposition = res.headers.get('content-disposition') ?? ''
+  const match = disposition.match(/filename="?([^"]+)"?/)
+  const filename = match?.[1] ?? 'analisis_competencia.kmz'
+  return { blob: await res.blob(), filename }
+}

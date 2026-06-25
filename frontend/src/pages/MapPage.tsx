@@ -13,6 +13,8 @@ import { ResultsOverlay }          from '../components/ResultsOverlay'
 import { KPIPanel }                from '../components/KPIPanel'
 import { AdminPanel }              from '../components/AdminPanel'
 import { EconomicContextWidget }   from '../components/EconomicContextWidget'
+import { WizardAnalisis }          from '../components/wizard/WizardAnalisis'
+import type { CompetenciaResultado } from '../types'
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -189,6 +191,7 @@ export default function MapPage() {
   const [previewData,   setPreviewData]   = useState<PreviewData | null>(null)
   const [showKPI,       setShowKPI]       = useState(false)
   const [showAdmin,     setShowAdmin]     = useState(false)
+  const [showWizard,    setShowWizard]    = useState(false)
   const [visibleCapas,  setVisibleCapas]  = useState<Record<string, boolean>>({})
 
   const toggleCapa = useCallback((keyword: string) => {
@@ -335,6 +338,28 @@ export default function MapPage() {
     }
   }
 
+  const handleWizardResultado = (res: CompetenciaResultado) => {
+    const previewCompat: PreviewData = {
+      zonas: res.zonas,
+      capas: res.capas.map(c => ({ ...c, puntos: c.puntos ?? [] })),
+      resumen: {
+        total_establecimientos: res.resumen.total_establecimientos,
+        total_zonas:            res.resumen.total_zonas,
+        usa_agebs:              res.resumen.nivel_geografico === 'ageb',
+        usa_manzanas:           res.resumen.nivel_geografico === 'manzana',
+        nivel_geografico:       res.resumen.nivel_geografico as 'ageb' | 'manzana',
+        clasificacion:          res.resumen.clasificacion,
+        poblacion_alcanzada:    0,
+        zonas_premium:          0,
+      },
+    }
+    setPreviewData(previewCompat)
+    const initVis: Record<string, boolean> = {}
+    res.capas.forEach(c => { initVis[c.keyword] = true })
+    setVisibleCapas(initVis)
+    setShowKPI(true)
+  }
+
   const handleLogout = () => { logout(); navigate('/login') }
 
   return (
@@ -360,6 +385,14 @@ export default function MapPage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {/* Wizard Caso 1 */}
+              <button
+                onClick={() => setShowWizard(true)}
+                className="text-white bg-blue-600 hover:bg-blue-500 text-xs rounded-md px-2.5 py-1 transition-colors font-semibold"
+                title="Wizard: Análisis de Competencia"
+              >
+                Wizard
+              </button>
               {/* Admin */}
               <button
                 onClick={() => setShowAdmin(true)}
@@ -699,6 +732,21 @@ export default function MapPage() {
               onClose={() => setShowKPI(false)}
               visibleCapas={visibleCapas}
               onToggleCapa={toggleCapa}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* ══ WIZARD PANEL (deslizable derecho) ══════════════════════════ */}
+      <div className={`
+        flex-shrink-0 border-l border-gray-200 bg-white transition-all duration-300 overflow-hidden
+        ${showWizard ? 'w-80' : 'w-0'}
+      `}>
+        {showWizard && (
+          <div className="w-80 h-full">
+            <WizardAnalisis
+              onClose={() => setShowWizard(false)}
+              onResultado={handleWizardResultado}
             />
           </div>
         )}
