@@ -5,5 +5,11 @@
       "destination": "https://proyecto-software-tipo-predik.onrender.com/api/:path*"
     },
     { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/ping",
+      "schedule": "*/10 * * * *"
+    }
   ]
 }
