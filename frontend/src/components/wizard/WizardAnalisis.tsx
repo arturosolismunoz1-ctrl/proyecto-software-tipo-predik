@@ -25,17 +25,6 @@ const WIZARD_DEFAULT: WizardData = {
   nivelGeografico: 'ageb',
 }
 
-// ── Helper ────────────────────────────────────────────────────────────────────
-
-function nseToGraproes(niveles: NseNivel[]): { min: number | null; max: number | null } {
-  if (niveles.length === 0) return { min: null, max: null }
-  const seleccionados = NSE_NIVELES.filter(n => niveles.includes(n.nivel))
-  const min = Math.min(...seleccionados.map(n => n.graproes_min))
-  const maxVals = seleccionados.map(n => n.graproes_max).filter((v): v is number => v !== null)
-  const max = maxVals.length < seleccionados.length ? null : Math.max(...maxVals)
-  return { min, max }
-}
-
 // ── Subcomponentes de pasos ───────────────────────────────────────────────────
 
 function StepHeader({ paso, label }: { paso: number; label: string }) {
@@ -265,7 +254,7 @@ function Step3NSE({
                 />
                 <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: n.color }} />
                 <span className="text-sm text-gray-700">{n.label}</span>
-                <span className="text-xs text-gray-400 ml-auto">≥{n.graproes_min} años</span>
+                <span className="text-xs text-gray-400 ml-auto">{n.pct_amai}% nac.</span>
               </label>
             ))}
           </div>
@@ -674,12 +663,10 @@ export function WizardAnalisis({ onClose, onResultado }: Props) {
   }
 
   const buildPayload = (d: WizardData) => {
-    const { min, max } = nseToGraproes(d.nseNiveles)
     return {
       clave_estado:        d.estadoClave,
       claves_municipios:   d.municipios.map(m => m.clave),
-      graproes_min:        min,
-      graproes_max:        max,
+      nse_niveles:         d.nseNiveles.length > 0 ? d.nseNiveles : null,
       marca_propia:        d.marcaPropia || undefined,
       scian_giros:         d.scianGiros.length > 0 ? d.scianGiros : undefined,
       competencia_directa: d.competenciaDirecta.filter(Boolean),

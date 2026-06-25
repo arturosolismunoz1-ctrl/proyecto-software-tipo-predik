@@ -53,14 +53,20 @@ export interface GeoJSONGeometry {
 
 export type NseNivel = 'AB' | 'Cmas' | 'C' | 'Cmenos' | 'Dmas' | 'D' | 'E'
 
-export const NSE_NIVELES: { nivel: NseNivel; label: string; graproes_min: number; graproes_max: number | null; color: string }[] = [
-  { nivel: 'AB',     label: 'A/B  — Posgrado',       graproes_min: 16, graproes_max: null, color: '#1e3a8a' },
-  { nivel: 'Cmas',   label: 'C+   — Licenciatura',   graproes_min: 14, graproes_max: 16,   color: '#1d4ed8' },
-  { nivel: 'C',      label: 'C    — Preparatoria',   graproes_min: 12, graproes_max: 14,   color: '#2563eb' },
-  { nivel: 'Cmenos', label: 'C−   — Bachillerato',   graproes_min: 10, graproes_max: 12,   color: '#3b82f6' },
-  { nivel: 'Dmas',   label: 'D+   — Secundaria',     graproes_min:  9, graproes_max: 10,   color: '#f59e0b' },
-  { nivel: 'D',      label: 'D    — Primaria',        graproes_min:  7, graproes_max:  9,   color: '#f97316' },
-  { nivel: 'E',      label: 'E    — Sin escolaridad', graproes_min:  0, graproes_max:  7,   color: '#ef4444' },
+/**
+ * Clasificación NSE usando score multi-variable inspirado en AMAI.
+ * Los umbrales se aplican a un score 0-100 que combina educación (34%),
+ * computadora (24%), seguridad social (27%), internet (9%) y automóvil (6%).
+ * Porcentajes = distribución AMAI nacional de referencia.
+ */
+export const NSE_NIVELES: { nivel: NseNivel; label: string; pct_amai: number; score_min: number; color: string }[] = [
+  { nivel: 'AB',     label: 'A/B  — Alto',          pct_amai:  7.2, score_min: 67, color: '#1e3a8a' },
+  { nivel: 'Cmas',   label: 'C+   — Medio alto',    pct_amai: 14.2, score_min: 57, color: '#1d4ed8' },
+  { nivel: 'C',      label: 'C    — Medio',          pct_amai: 17.0, score_min: 50, color: '#2563eb' },
+  { nivel: 'Cmenos', label: 'C−   — Medio bajo',    pct_amai: 18.7, score_min: 42, color: '#3b82f6' },
+  { nivel: 'Dmas',   label: 'D+   — Popular alto',  pct_amai: 18.4, score_min: 35, color: '#f59e0b' },
+  { nivel: 'D',      label: 'D    — Popular',        pct_amai: 18.5, score_min: 25, color: '#f97316' },
+  { nivel: 'E',      label: 'E    — Muy bajo',       pct_amai:  6.0, score_min:  0, color: '#ef4444' },
 ]
 
 export interface WizardData {

@@ -206,7 +206,8 @@ def migrar_ageb_demographics(src, dst, dry_run: bool, cp: dict) -> int:
     src_cur.execute(f"""
         SELECT cvegeo, fuente, pobtot, pobmas, pobfem,
                p_0a14, p_15a64, p_65ymas, vivpar_hab, prom_ocup,
-               graproes, pcon_disc, psinder, pder_ss, indicadores, loaded_at
+               graproes, pcon_disc, psinder, pder_ss, indicadores,
+               score_nse, nse_nivel, loaded_at
         FROM raw_data.ageb_demographics
         WHERE {where}
         ORDER BY cvegeo
@@ -226,7 +227,9 @@ def migrar_ageb_demographics(src, dst, dry_run: bool, cp: dict) -> int:
             (r["cvegeo"], r["fuente"], r["pobtot"], r["pobmas"], r["pobfem"],
              r["p_0a14"], r["p_15a64"], r["p_65ymas"], r["vivpar_hab"], r["prom_ocup"],
              r["graproes"], r["pcon_disc"], r["psinder"], r["pder_ss"],
-             json.dumps(r["indicadores"]) if r["indicadores"] else None, r["loaded_at"])
+             json.dumps(r["indicadores"]) if r["indicadores"] else None,
+             r.get("score_nse"), r.get("nse_nivel"),
+             r["loaded_at"])
             for r in rows
         ]
         psycopg2.extras.execute_values(
@@ -234,9 +237,12 @@ def migrar_ageb_demographics(src, dst, dry_run: bool, cp: dict) -> int:
             INSERT INTO raw_data.ageb_demographics
               (cvegeo, fuente, pobtot, pobmas, pobfem,
                p_0a14, p_15a64, p_65ymas, vivpar_hab, prom_ocup,
-               graproes, pcon_disc, psinder, pder_ss, indicadores, loaded_at)
+               graproes, pcon_disc, psinder, pder_ss, indicadores,
+               score_nse, nse_nivel, loaded_at)
             VALUES %s
-            ON CONFLICT (cvegeo) DO NOTHING
+            ON CONFLICT (cvegeo) DO UPDATE SET
+              score_nse = EXCLUDED.score_nse,
+              nse_nivel = EXCLUDED.nse_nivel
             """,
             data, page_size=BATCH_SIZE_SMALL,
         )

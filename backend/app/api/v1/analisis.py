@@ -28,9 +28,11 @@ class AnalisisCompetenciaRequest(BaseModel):
     claves_municipios: List[str] = Field(..., min_length=1, description="Una o más claves de municipio")
     polygon: Optional[Dict[str, Any]] = Field(None, description="Polígono manual (sobreescribe bbox)")
 
-    # NSE — rangos de grado promedio de escolaridad (INEGI Censo 2020)
-    graproes_min: Optional[float] = Field(None, description="Escolaridad mínima para filtrar AGEBs")
-    graproes_max: Optional[float] = Field(None, description="Escolaridad máxima para filtrar AGEBs")
+    # NSE — niveles socioeconómicos AMAI (score multi-variable, ver compute_nse_scores.py)
+    nse_niveles: Optional[List[str]] = Field(
+        None,
+        description="Niveles NSE a incluir: AB, Cmas, C, Cmenos, Dmas, D, E. None = todos.",
+    )
 
     # Marca propia
     marca_propia: Optional[str] = Field(None, description="Nombre de tu marca/cadena propia")
@@ -134,8 +136,7 @@ async def analisis_competencia(
         try:
             agebs = query_agebs_en_poligono(
                 db, polygon,
-                graproes_min=request.graproes_min,
-                graproes_max=request.graproes_max,
+                nse_niveles=request.nse_niveles or None,
             )
             if agebs:
                 hexagonos_raw = _normalizar_intensidad(agebs)

@@ -68,6 +68,8 @@ class AgebDemographics(Base):
     psinder = Column(Integer())
     pder_ss = Column(Integer())
     indicadores = Column(JSON)
+    score_nse = Column(Float(), nullable=True)
+    nse_nivel = Column(String(10), nullable=True)
     loaded_at = Column(DateTime(timezone=True))
 
 

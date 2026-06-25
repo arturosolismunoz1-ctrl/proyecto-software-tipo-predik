@@ -214,8 +214,7 @@ export async function apiBieResumen(claveEstado: string): Promise<BieResumen> {
 export interface AnalisisCompetenciaPayload {
   clave_estado: string
   claves_municipios: string[]
-  graproes_min?: number | null
-  graproes_max?: number | null
+  nse_niveles?: string[] | null
   marca_propia?: string
   scian_giros?: string[]
   competencia_directa: string[]

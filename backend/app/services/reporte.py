@@ -171,18 +171,15 @@ def query_puntos_capa(
 def query_agebs_en_poligono(
     db: Session,
     polygon: Dict[str, Any],
-    graproes_min: Optional[float] = None,
-    graproes_max: Optional[float] = None,
+    nse_niveles: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Consulta AGEBs que intersectan el polígono con conteo de establecimientos DENUE.
-    Hace LEFT JOIN con demographics para datos de población.
-    Retorna lista de dicts con geom (GeoJSON), cvegeo, conteos.
-    Retorna [] si la tabla ageb_geometries está vacía (aún no se ha cargado el MGN).
+    Filtra por nse_nivel (lista de niveles AMAI: AB, Cmas, C, Cmenos, Dmas, D, E).
+    Si nse_niveles es None o vacío, retorna todos los AGEBs sin filtro NSE.
     """
     polygon_json = json.dumps(polygon)
 
-    # Subquery: sólo establecimientos dentro del polígono para reducir el join espacial
     poly_geom = geo_funcs.ST_GeomFromGeoJSON(polygon_json)
     denue_en_zona = (
         select(DenueEstablishment.id, DenueEstablishment.geom)
@@ -205,6 +202,8 @@ def query_agebs_en_poligono(
             AgebDemographics.p_15a64,
             AgebDemographics.p_65ymas,
             AgebDemographics.graproes,
+            AgebDemographics.score_nse,
+            AgebDemographics.nse_nivel,
             func.count(denue_en_zona.c.id).label("num_establecimientos"),
         )
         .outerjoin(AgebDemographics, AgebGeometry.cvegeo_9 == AgebDemographics.cvegeo)
@@ -229,30 +228,31 @@ def query_agebs_en_poligono(
             AgebDemographics.p_15a64,
             AgebDemographics.p_65ymas,
             AgebDemographics.graproes,
+            AgebDemographics.score_nse,
+            AgebDemographics.nse_nivel,
         )
     )
 
-    if graproes_min is not None:
-        stmt = stmt.where(AgebDemographics.graproes >= graproes_min)
-    if graproes_max is not None:
-        stmt = stmt.where(AgebDemographics.graproes <= graproes_max)
+    if nse_niveles:
+        stmt = stmt.where(AgebDemographics.nse_nivel.in_(nse_niveles))
 
     rows = db.execute(stmt).all()
     return [
         {
-            "cvegeo":              r.cvegeo,
-            "nom_mun":             r.nom_mun or "",
-            "nom_loc":             r.nom_loc or "",
-            "ambito":              r.ambito or "Urbana",
-            "geom":                r.geom or "",
-            "pobtot":              r.pobtot or 0,
-            "p_0a14":              r.p_0a14 or 0,
-            "p_15a64":             r.p_15a64 or 0,
-            "p_65ymas":            r.p_65ymas or 0,
-            "graproes":            float(r.graproes) if r.graproes else 0.0,
-            "cantidad":            int(r.num_establecimientos),
-            # intensidad se calcula después normalizando
-            "intensidad":          0.0,
+            "cvegeo":     r.cvegeo,
+            "nom_mun":    r.nom_mun or "",
+            "nom_loc":    r.nom_loc or "",
+            "ambito":     r.ambito or "Urbana",
+            "geom":       r.geom or "",
+            "pobtot":     r.pobtot or 0,
+            "p_0a14":     r.p_0a14 or 0,
+            "p_15a64":    r.p_15a64 or 0,
+            "p_65ymas":   r.p_65ymas or 0,
+            "graproes":   float(r.graproes) if r.graproes else 0.0,
+            "score_nse":  float(r.score_nse) if r.score_nse else None,
+            "nse_nivel":  r.nse_nivel or None,
+            "cantidad":   int(r.num_establecimientos),
+            "intensidad": 0.0,
         }
         for r in rows
     ]
