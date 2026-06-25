@@ -1,6 +1,4 @@
-// En producción, VITE_API_URL apunta al backend desplegado.
-// En desarrollo, el proxy de Vite redirige /api → localhost:8000.
-const BASE = (import.meta.env.VITE_API_URL ?? '') + '/api/v1'
+const BASE = '/api/v1'
 
 const TOKEN_KEY = 'predik_token'
 
