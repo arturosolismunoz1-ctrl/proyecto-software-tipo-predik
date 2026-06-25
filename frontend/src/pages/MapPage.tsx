@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, useMap } from 'react-leaflet'
-import L from 'leaflet'
-import 'leaflet-draw'
 import { useAuthStore } from '../store/useAuthStore'
 import {
   apiEstados, apiMunicipios, apiMunicipioBbox,
@@ -55,49 +53,6 @@ function MapFlyTo({ target }: { target: FlyTarget | null }) {
       map.flyTo([target.lat, target.lng], target.zoom, { duration: 1.2 })
     }
   }, [map, target])
-
-  return null
-}
-
-// ── DrawControl ───────────────────────────────────────────────────────────────
-
-function DrawControl({ onPolygon }: { onPolygon: (g: GeoJSONGeometry) => void }) {
-  const map = useMap()
-
-  useEffect(() => {
-    const group = new L.FeatureGroup()
-    map.addLayer(group)
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const DC = (L.Control as any).Draw
-    const control = new DC({
-      draw: {
-        polygon:      { shapeOptions: { color: '#1a5fc3', weight: 2, fillOpacity: 0.12 } },
-        rectangle:    { shapeOptions: { color: '#1a5fc3', weight: 2, fillOpacity: 0.12 } },
-        polyline:     false,
-        circle:       false,
-        marker:       false,
-        circlemarker: false,
-      },
-      edit: { featureGroup: group },
-    })
-    map.addControl(control)
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const onCreate = (e: any) => {
-      group.clearLayers()
-      group.addLayer(e.layer)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      onPolygon((e.layer as any).toGeoJSON().geometry as GeoJSONGeometry)
-    }
-
-    map.on('draw:created', onCreate)
-    return () => {
-      map.off('draw:created', onCreate)
-      map.removeControl(control)
-      map.removeLayer(group)
-    }
-  }, [map, onPolygon])
 
   return null
 }
@@ -236,12 +191,6 @@ export default function MapPage() {
   const [showAdmin,     setShowAdmin]     = useState(false)
   const [visibleCapas,  setVisibleCapas]  = useState<Record<string, boolean>>({})
 
-  const handlePolygon = useCallback((g: GeoJSONGeometry) => {
-    setPolygon(g)
-    setStatus('Área definida. Configura las capas y genera el reporte.')
-    setStatusType('ok')
-  }, [])
-
   const toggleCapa = useCallback((keyword: string) => {
     setVisibleCapas(prev => ({ ...prev, [keyword]: !(prev[keyword] !== false) }))
   }, [])
@@ -277,7 +226,7 @@ export default function MapPage() {
       }
       setPolygon(polygon)
       setFlyTarget({ lat: bbox.center_lat, lng: bbox.center_lng, zoom: 12 })
-      setStatus(`Municipio: ${bbox.nombre}. Ajusta el polígono o genera el reporte.`)
+      setStatus(`Municipio: ${bbox.nombre}. Configura las capas y genera el reporte.`)
       setStatusType('ok')
     } catch (err) {
       setStatus(err instanceof Error ? err.message : 'No se encontró el municipio en la BD (AGEBs no cargadas para esta zona)')
@@ -331,7 +280,7 @@ export default function MapPage() {
 
   const handleGenerar = async () => {
     if (!polygon) {
-      setStatus('Primero dibuja un polígono en el mapa.')
+      setStatus('Selecciona un estado y municipio primero.')
       setStatusType('error')
       return
     }
@@ -485,7 +434,7 @@ export default function MapPage() {
 
               {selectedEnt && municipios.length === 0 && !munLoading && (
                 <p className="text-xs text-gray-400 px-1">
-                  No hay municipios cargados para este estado. Dibuja el polígono manualmente.
+                  No hay municipios cargados para este estado.
                 </p>
               )}
             </div>
@@ -498,12 +447,6 @@ export default function MapPage() {
               />
             )}
 
-            <div className="relative flex items-center gap-2 mb-2">
-              <div className="flex-1 h-px bg-gray-100" />
-              <span className="text-xs text-gray-400 flex-shrink-0">o dibuja en el mapa</span>
-              <div className="flex-1 h-px bg-gray-100" />
-            </div>
-
             <div className={`text-xs rounded-lg px-3 py-2.5 border flex items-center gap-2 ${
               polygon
                 ? 'bg-green-50 border-green-200 text-green-700'
@@ -515,8 +458,9 @@ export default function MapPage() {
                 </svg>Área definida correctamente</>
               ) : (
                 <><svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
-                </svg>Dibuja un polígono en el mapa</>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>Selecciona un estado y municipio</>
               )}
             </div>
           </section>
@@ -715,7 +659,6 @@ export default function MapPage() {
             minZoom={1}
             maxZoom={20}
           />
-          <DrawControl onPolygon={handlePolygon} />
           <MapFlyTo target={flyTarget} />
           <ResultsOverlay data={previewData} visibleCapas={visibleCapas} />
         </MapContainer>
@@ -725,9 +668,10 @@ export default function MapPage() {
           <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-white rounded-full shadow-lg px-5 py-2.5 text-sm text-gray-600 flex items-center gap-2 pointer-events-none z-[1000]">
             <svg className="w-4 h-4 text-brand-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
+                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
             </svg>
-            Usa la herramienta de dibujo para definir el área de análisis
+            Selecciona un estado y municipio para comenzar
           </div>
         )}
 
