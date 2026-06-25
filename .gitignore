@@ -53,6 +53,9 @@ data/mgn/
 data/denue/
 resultados/
 
+# --- Scripts de migración — checkpoint temporal ---
+backend/scripts/.migrate_checkpoint.json
+
 # --- Prohibido explícitamente por convención del proyecto ---
 *final*.zip
 *definitivo*
