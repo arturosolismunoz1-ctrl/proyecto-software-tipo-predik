@@ -433,6 +433,8 @@ function Step5Resultado({
   resultado,
   loading,
   error,
+  kmzListo,
+  kmzLoading,
   onDescargarKmz,
   onNuevoAnalisis,
 }: {
@@ -440,6 +442,8 @@ function Step5Resultado({
   resultado: CompetenciaResultado | null
   loading: boolean
   error: string | null
+  kmzListo: boolean
+  kmzLoading: boolean
   onDescargarKmz: () => void
   onNuevoAnalisis: () => void
 }) {
@@ -513,12 +517,22 @@ function Step5Resultado({
       {/* Acciones */}
       <button
         onClick={onDescargarKmz}
-        className="w-full bg-brand-800 text-white rounded-xl py-3 font-semibold text-sm flex items-center justify-center gap-2"
+        disabled={kmzLoading}
+        className="w-full bg-brand-800 text-white rounded-xl py-3 font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
       >
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-        </svg>
-        Descargar KMZ
+        {kmzLoading ? (
+          <>
+            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            Generando KMZ...
+          </>
+        ) : (
+          <>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            {kmzListo ? 'Descargar KMZ' : 'Descargar KMZ (regenerando...)'}
+          </>
+        )}
       </button>
 
       <button
@@ -545,6 +559,8 @@ export function WizardAnalisis({ onClose, onResultado }: Props) {
   const [resultado, setResultado] = useState<CompetenciaResultado | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [kmzBlob, setKmzBlob] = useState<{ blob: Blob; filename: string } | null>(null)
+  const [kmzLoading, setKmzLoading] = useState(false)
 
   useEffect(() => {
     apiEstados().then(e => setEstados(e)).catch(() => {})
@@ -574,20 +590,38 @@ export function WizardAnalisis({ onClose, onResultado }: Props) {
 
   const ejecutar = async (d: WizardData) => {
     setLoading(true)
+    setKmzBlob(null)
     setError(null)
     setPaso(5)
     try {
-      const res = await apiAnalisisCompetenciaPreview(buildPayload(d))
+      // Corre GeoJSON y KMZ en paralelo — la espera es la misma
+      const [res, kmz] = await Promise.all([
+        apiAnalisisCompetenciaPreview(buildPayload(d)),
+        apiAnalisisCompetenciaKmz(buildPayload(d)).catch(() => null),
+      ])
       setResultado(res)
       onResultado(res)
+      if (kmz) setKmzBlob(kmz)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error desconocido')
     } finally {
       setLoading(false)
+      setKmzLoading(false)
     }
   }
 
   const descargarKmz = async () => {
+    // Si ya tenemos el blob listo, descarga instantánea
+    if (kmzBlob) {
+      const url = URL.createObjectURL(kmzBlob.blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = kmzBlob.filename
+      document.body.appendChild(a); a.click(); a.remove()
+      URL.revokeObjectURL(url)
+      return
+    }
+    // Fallback: re-pide el KMZ si por alguna razón no se generó en paralelo
+    setKmzLoading(true)
     try {
       const { blob, filename } = await apiAnalisisCompetenciaKmz(buildPayload(data))
       const url = URL.createObjectURL(blob)
@@ -597,6 +631,8 @@ export function WizardAnalisis({ onClose, onResultado }: Props) {
       URL.revokeObjectURL(url)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al descargar KMZ')
+    } finally {
+      setKmzLoading(false)
     }
   }
 
@@ -688,8 +724,10 @@ export function WizardAnalisis({ onClose, onResultado }: Props) {
             resultado={resultado}
             loading={loading}
             error={error}
+            kmzListo={!!kmzBlob}
+            kmzLoading={kmzLoading}
             onDescargarKmz={descargarKmz}
-            onNuevoAnalisis={() => { setResultado(null); setError(null); setPaso(1); setData(WIZARD_DEFAULT) }}
+            onNuevoAnalisis={() => { setResultado(null); setError(null); setKmzBlob(null); setPaso(1); setData(WIZARD_DEFAULT) }}
           />
         )}
       </div>
