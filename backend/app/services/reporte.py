@@ -792,7 +792,7 @@ async def preview_reporte(
     en lugar de bytes KMZ/Excel. Usado para mostrar resultados en el mapa.
     """
     if ejecutar_etl:
-        await run_etl_capas(db, capas, polygon, max_records, h3_resolution)
+        await run_etl_capas(db, capas, polygon, max_records)
 
     hexagonos_raw: List[Dict] = []
     usa_agebs = False
