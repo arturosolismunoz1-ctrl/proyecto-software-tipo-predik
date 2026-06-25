@@ -4,19 +4,9 @@ import { NSE_NIVELES } from '../../types'
 import {
   apiEstados, apiMunicipios,
   apiAnalisisCompetenciaPreview, apiAnalisisCompetenciaKmz,
+  apiScianCatalogo,
 } from '../../api/client'
-
-// ── Constantes ────────────────────────────────────────────────────────────────
-
-const SCIAN_COMUNES = [
-  { codigo: '462111', label: 'Ferreterías y tlapalerías' },
-  { codigo: '461110', label: 'Abarrotes y ultramarinos' },
-  { codigo: '461160', label: 'Farmacias' },
-  { codigo: '461210', label: 'Ropa y accesorios' },
-  { codigo: '722111', label: 'Restaurantes de comida rápida' },
-  { codigo: '465911', label: 'Ópticas' },
-  { codigo: '461130', label: 'Carnicerías' },
-]
+import type { ScianGiro } from '../../api/client'
 
 const PASOS = ['Estado', 'Municipio(s)', 'NSE', 'Análisis', 'Resultado']
 
@@ -270,14 +260,16 @@ function Step3NSE({
 
 // Paso 4
 function Step4Analisis({
-  data, onNext, onBack,
+  data, onNext, onBack, scianGiros,
 }: {
   data: WizardData
   onNext: (patch: Partial<WizardData>) => void
   onBack: () => void
+  scianGiros: ScianGiro[]
 }) {
   const [marcaPropia, setMarcaPropia] = useState(data.marcaPropia)
   const [scianGiro, setScianGiro] = useState(data.scianGiro)
+  const [scianSearch, setScianSearch] = useState('')
   const [competencia, setCompetencia] = useState<string[]>(
     data.competenciaDirecta.length ? data.competenciaDirecta : ['']
   )
@@ -354,16 +346,35 @@ function Step4Analisis({
       {/* Giro SCIAN */}
       <div className="space-y-1.5">
         <p className="text-xs text-gray-500 font-medium">Giro SCIAN (para competencia indirecta)</p>
+        <input
+          type="text"
+          placeholder="Buscar giro... (ej: farmacia, restaurante)"
+          value={scianSearch}
+          onChange={e => setScianSearch(e.target.value)}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
+        />
         <select
           value={scianGiro}
           onChange={e => setScianGiro(e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none"
+          size={5}
+          className="w-full border border-gray-200 rounded-lg px-3 py-1 text-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none"
         >
           <option value="">— Sin filtro SCIAN —</option>
-          {SCIAN_COMUNES.map(s => (
-            <option key={s.codigo} value={s.codigo}>{s.codigo} — {s.label}</option>
-          ))}
+          {scianGiros
+            .filter(s => {
+              const q = scianSearch.toLowerCase()
+              return !q || s.descripcion.toLowerCase().includes(q) || s.codigo.includes(q)
+            })
+            .map(s => (
+              <option key={s.codigo} value={s.codigo}>{s.codigo} — {s.descripcion}</option>
+            ))
+          }
         </select>
+        {scianGiro && (
+          <p className="text-xs text-brand-700 font-medium">
+            Seleccionado: {scianGiro} — {scianGiros.find(s => s.codigo === scianGiro)?.descripcion}
+          </p>
+        )}
       </div>
 
       {/* Hubs */}
@@ -556,6 +567,7 @@ export function WizardAnalisis({ onClose, onResultado }: Props) {
   const [paso, setPaso] = useState(1)
   const [data, setData] = useState<WizardData>(WIZARD_DEFAULT)
   const [estados, setEstados] = useState<EstadoCatalogo[]>([])
+  const [scianGiros, setScianGiros] = useState<ScianGiro[]>([])
   const [resultado, setResultado] = useState<CompetenciaResultado | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -564,6 +576,7 @@ export function WizardAnalisis({ onClose, onResultado }: Props) {
 
   useEffect(() => {
     apiEstados().then(e => setEstados(e)).catch(() => {})
+    apiScianCatalogo().then(g => setScianGiros(g)).catch(() => {})
   }, [])
 
   const patch = (updates: Partial<WizardData>) => {
@@ -716,6 +729,7 @@ export function WizardAnalisis({ onClose, onResultado }: Props) {
             data={data}
             onNext={u => siguientePasoConData(u)}
             onBack={() => irPaso(3)}
+            scianGiros={scianGiros}
           />
         )}
         {paso === 5 && (

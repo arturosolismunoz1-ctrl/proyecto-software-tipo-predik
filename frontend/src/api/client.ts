@@ -42,6 +42,17 @@ export async function apiLogin(email: string, password: string): Promise<string>
 
 // ── Catálogo ──────────────────────────────────────────────────────────────────
 
+export interface ScianGiro {
+  codigo: string
+  descripcion: string
+}
+
+export async function apiScianCatalogo(): Promise<ScianGiro[]> {
+  const res = await req('/catalogo/scian')
+  if (!res.ok) throw new Error('Error cargando giros SCIAN')
+  return res.json()
+}
+
 export async function apiEstados() {
   const res = await req('/catalogo/estados')
   if (!res.ok) throw new Error('Error cargando estados')

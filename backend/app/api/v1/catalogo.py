@@ -143,6 +143,11 @@ _MUNICIPIOS: List[Municipio] = [
 _ESTADOS_IDX = {e.clave: e for e in _ESTADOS}
 
 
+class ScianGiro(BaseModel):
+    codigo: str
+    descripcion: str
+
+
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.get("/estados", response_model=List[Estado], summary="Lista de estados de Mexico")
@@ -161,6 +166,24 @@ def listar_municipios(clave_estado: str):
         raise HTTPException(status_code=404, detail=f"Estado '{clave_estado}' no encontrado")
     resultado = [m for m in _MUNICIPIOS if m.clave_estado == clave]
     return resultado
+
+
+@router.get(
+    "/scian",
+    response_model=List[ScianGiro],
+    summary="Giros SCIAN disponibles en DENUE",
+)
+def listar_scian(db: Session = Depends(get_db)):
+    rows = db.execute(
+        text("""
+            SELECT DISTINCT codigo_scian, MAX(clase_actividad) AS clase_actividad
+            FROM raw_data.denue_establishments
+            WHERE codigo_scian IS NOT NULL AND codigo_scian != ''
+            GROUP BY codigo_scian
+            ORDER BY MAX(clase_actividad)
+        """)
+    ).fetchall()
+    return [ScianGiro(codigo=r[0], descripcion=r[1] or r[0]) for r in rows]
 
 
 @router.get(
