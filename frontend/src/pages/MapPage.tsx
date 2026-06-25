@@ -389,9 +389,9 @@ export default function MapPage() {
               <button
                 onClick={() => setShowWizard(true)}
                 className="text-white bg-blue-600 hover:bg-blue-500 text-xs rounded-md px-2.5 py-1 transition-colors font-semibold"
-                title="Wizard: Análisis de Competencia"
+                title="Análisis geoespacial de competencia y zonas de oportunidad"
               >
-                Wizard
+                Análisis geoespacial de competencia y zonas de oportunidad
               </button>
               {/* Admin */}
               <button

@@ -2,6 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import L from 'leaflet'
 import './index.css'
+import 'react-grid-layout/css/styles.css'
+import 'react-resizable/css/styles.css'
 import App from './App.tsx'
 
 // Fix Leaflet marker icons in Vite (webpack/vite asset handling issue)
