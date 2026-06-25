@@ -23,8 +23,8 @@ import psycopg2.extensions
 
 # ── Configuración ─────────────────────────────────────────────────────────────
 
-ESTADOS = ("09", "31")
-NOMBRES_ESTADOS = {"09": "CDMX", "31": "Yucatán"}
+ESTADOS = ("04", "09", "23", "31")
+NOMBRES_ESTADOS = {"04": "Campeche", "09": "CDMX", "23": "Quintana Roo", "31": "Yucatan"}
 BATCH_SIZE_GEOM = 300    # filas con geometría grande (manzanas)
 BATCH_SIZE_AGEB = 800    # AGEBs (geometría mediana)
 BATCH_SIZE_DENUE = 2000  # DENUE (solo POINT, sin raw_response)
@@ -95,9 +95,9 @@ def verificar_conexiones(src, dst) -> bool:
 
     tablas = [
         ("raw_data.ageb_geometries",      f"clave_ent IN {ESTADOS}"),
-        ("raw_data.ageb_demographics",    "cvegeo LIKE '09%' OR cvegeo LIKE '31%'"),
+        ("raw_data.ageb_demographics",    "cvegeo LIKE '04%' OR cvegeo LIKE '09%' OR cvegeo LIKE '23%' OR cvegeo LIKE '31%'"),
         ("raw_data.manzana_vivienda",     f"clave_ent IN {ESTADOS}"),
-        ("raw_data.denue_establishments", "entidad ILIKE 'CIUDAD DE M%XICO' OR entidad ILIKE 'YUCAT%N'"),
+        ("raw_data.denue_establishments", "entidad ILIKE 'CIUDAD DE M%XICO' OR entidad ILIKE 'QUINTANA%' OR entidad ILIKE 'YUCAT%N'"),
         ("raw_data.bie_indicadores",      f"estado_clave IN {ESTADOS}"),
     ]
     log("--- Conteos fuente (local) -----------------------------------")
@@ -196,7 +196,7 @@ def migrar_ageb_demographics(src, dst, dry_run: bool, cp: dict) -> int:
         log(f"  {tabla}: ya completado (checkpoint). Saltando.")
         return 0
 
-    where = "cvegeo LIKE '09%' OR cvegeo LIKE '31%'"
+    where = "cvegeo LIKE '09%' OR cvegeo LIKE '23%' OR cvegeo LIKE '31%'"
     total_src = contar(src.cursor(), f"raw_data.{tabla}", where)
     log(f"  {tabla}: {total_src:,} registros a migrar")
     if dry_run:
@@ -330,7 +330,9 @@ def migrar_manzanas(src, dst, dry_run: bool, cp: dict) -> int:
 # ── Migración 4: denue_establishments ────────────────────────────────────────
 
 DENUE_FILTER = (
-    "entidad ILIKE 'CIUDAD DE M%XICO' "
+    "entidad ILIKE 'CAMPECHE' "
+    "OR entidad ILIKE 'CIUDAD DE M%XICO' "
+    "OR entidad ILIKE 'QUINTANA%' "
     "OR entidad ILIKE 'YUCAT%N'"
 )
 
@@ -341,7 +343,7 @@ def migrar_denue(src, dst, dry_run: bool, cp: dict) -> int:
         return 0
 
     total_src = contar(src.cursor(), f"raw_data.{tabla}", DENUE_FILTER)
-    log(f"  {tabla}: {total_src:,} registros a migrar (raw_response → NULL)")
+    log(f"  {tabla}: {total_src:,} registros a migrar (raw_response=NULL)")
     if dry_run:
         return total_src
 
@@ -477,8 +479,8 @@ def verificar_resultado(src, dst) -> None:
 
     checks = [
         ("raw_data.ageb_geometries",   f"clave_ent IN {ESTADOS}",   f"clave_ent IN {ESTADOS}"),
-        ("raw_data.ageb_demographics", "cvegeo LIKE '09%' OR cvegeo LIKE '31%'",
-                                       "cvegeo LIKE '09%' OR cvegeo LIKE '31%'"),
+        ("raw_data.ageb_demographics", "cvegeo LIKE '04%' OR cvegeo LIKE '09%' OR cvegeo LIKE '23%' OR cvegeo LIKE '31%'",
+                                       "cvegeo LIKE '04%' OR cvegeo LIKE '09%' OR cvegeo LIKE '23%' OR cvegeo LIKE '31%'"),
         ("raw_data.manzana_vivienda",  f"clave_ent IN {ESTADOS}",   f"clave_ent IN {ESTADOS}"),
         ("raw_data.denue_establishments", DENUE_FILTER, DENUE_FILTER),
         ("raw_data.bie_indicadores",   f"estado_clave IN {ESTADOS}", f"estado_clave IN {ESTADOS}"),
@@ -490,7 +492,7 @@ def verificar_resultado(src, dst) -> None:
         n_dst = contar(dst.cursor(), tabla, where_dst)
         ok = n_src == n_dst
         todos_ok = todos_ok and ok
-        estado = "✅" if ok else "❌"
+        estado = "OK" if ok else "FAIL"
         log(f"  {estado} {tabla}")
         log(f"       local={n_src:,}  |  supabase={n_dst:,}")
 
@@ -523,7 +525,7 @@ TABLAS_MAP = {
 }
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Migración local → Supabase (09 CDMX + 31 Yucatán)")
+    parser = argparse.ArgumentParser(description="Migracion local a Supabase")
     parser.add_argument("--dry-run", action="store_true", help="Solo muestra conteos, no migra")
     parser.add_argument("--tabla", choices=list(TABLAS_MAP.keys()), help="Migrar solo esta tabla")
     parser.add_argument("--reset", action="store_true", help="Borra checkpoints y empieza de cero")
