@@ -117,7 +117,7 @@ def query_puntos_capa(
     db: Session,
     polygon: Dict[str, Any],
     keyword: str,
-    scian_prefix: Optional[str] = None,
+    scian_prefixes: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """Establecimientos individuales dentro del poligono que coincidan con keyword."""
     polygon_json = json.dumps(polygon)
@@ -144,8 +144,10 @@ def query_puntos_capa(
         func.lower(DenueEstablishment.nombre).like(f"%{kw}%"),
         func.lower(DenueEstablishment.clase_actividad).like(f"%{kw}%"),
     ]
-    if scian_prefix:
-        filtros_texto.append(DenueEstablishment.codigo_scian.like(f"{scian_prefix}%"))
+    if scian_prefixes:
+        filtros_texto.extend(
+            DenueEstablishment.codigo_scian.like(f"{p}%") for p in scian_prefixes
+        )
     stmt = stmt.where(or_(*filtros_texto))
 
     rows = db.execute(stmt).all()
@@ -835,12 +837,12 @@ def bbox_municipios(
 def query_puntos_indirecta(
     db: Session,
     polygon: Dict[str, Any],
-    scian_prefix: str,
+    scian_prefixes: List[str],
     exclude_keywords: List[str],
 ) -> List[Dict[str, Any]]:
     """
-    Establecimientos con el mismo giro SCIAN que NO coinciden con ninguna
-    de las marcas (propia ni competidores directos). Son la competencia indirecta.
+    Establecimientos con uno de los giros SCIAN seleccionados que NO coinciden
+    con ninguna de las marcas (propia ni competidores directos).
     """
     polygon_json = json.dumps(polygon)
     poly_geom = geo_funcs.ST_GeomFromGeoJSON(polygon_json)
@@ -857,7 +859,7 @@ def query_puntos_indirecta(
     ).where(
         DenueEstablishment.geom.isnot(None),
         geo_funcs.ST_Intersects(DenueEstablishment.geom, poly_geom),
-        DenueEstablishment.codigo_scian.like(f"{scian_prefix}%"),
+        or_(*[DenueEstablishment.codigo_scian.like(f"{p}%") for p in scian_prefixes]),
     )
 
     for kw in exclude_keywords:
@@ -1294,7 +1296,7 @@ async def generar_reporte(
             db,
             polygon,
             capa["keyword"],
-            scian_prefix=capa.get("scian_prefix"),
+            scian_prefixes=capa.get("scian_prefixes") or ([capa["scian_prefix"]] if capa.get("scian_prefix") else None),
         )
         capas_con_puntos.append({**capa, "puntos": puntos})
 

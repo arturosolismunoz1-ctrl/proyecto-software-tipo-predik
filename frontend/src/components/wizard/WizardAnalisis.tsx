@@ -16,7 +16,7 @@ const WIZARD_DEFAULT: WizardData = {
   municipios: [],
   nseNiveles: [],
   marcaPropia: '',
-  scianGiro: '',
+  scianGiros: [],
   competenciaDirecta: [''],
   incluirSucursales: true,
   incluirHubs: true,
@@ -203,6 +203,7 @@ function Step3NSE({
   onBack: () => void
 }) {
   const [seleccionados, setSeleccionados] = useState<NseNivel[]>(data.nseNiveles)
+  const [abierto, setAbierto] = useState(true)
 
   const toggle = (nivel: NseNivel) => {
     setSeleccionados(prev =>
@@ -210,36 +211,70 @@ function Step3NSE({
     )
   }
 
+  const toggleTodos = () => {
+    setSeleccionados(prev =>
+      prev.length === NSE_NIVELES.length ? [] : NSE_NIVELES.map(n => n.nivel)
+    )
+  }
+
+  const resumen = seleccionados.length === 0
+    ? 'Todos los niveles'
+    : seleccionados.length === NSE_NIVELES.length
+      ? 'Todos los niveles'
+      : seleccionados.join(', ')
+
   return (
     <div className="space-y-3">
-      <StepHeader paso={3} label="Clasificador de consumidor (NSE)" />
+      <StepHeader paso={3} label="Nivel Socioeconómico (NSE)" />
       <p className="text-xs text-gray-500 leading-relaxed">
-        Filtra AGEBs por grado promedio de escolaridad INEGI. Si no seleccionas ninguno, se analizan todas las zonas.
+        Filtra zonas por grado promedio de escolaridad (INEGI Censo 2020). Sin selección = todas las zonas.
       </p>
 
-      <div className="space-y-1.5">
-        {NSE_NIVELES.map(n => (
-          <label key={n.nivel} className={`flex items-center gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${
-            seleccionados.includes(n.nivel)
-              ? 'bg-brand-50 border-brand-300'
-              : 'border-gray-100 hover:bg-gray-50'
-          }`}>
-            <input
-              type="checkbox"
-              checked={seleccionados.includes(n.nivel)}
-              onChange={() => toggle(n.nivel)}
-              className="accent-brand-700"
-            />
-            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: n.color }} />
-            <span className="text-sm text-gray-700">{n.label}</span>
-            <span className="text-xs text-gray-400 ml-auto">≥{n.graproes_min} años</span>
-          </label>
-        ))}
+      {/* Dropdown colapsable */}
+      <div className="border border-gray-200 rounded-xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setAbierto(o => !o)}
+          className="w-full flex items-center justify-between px-3 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+        >
+          <span className="text-sm text-gray-700 font-medium truncate">{resumen}</span>
+          <span className="text-gray-400 ml-2 flex-shrink-0">{abierto ? '▲' : '▼'}</span>
+        </button>
+
+        {abierto && (
+          <div className="border-t border-gray-100 divide-y divide-gray-50">
+            {/* Opción "Todos" */}
+            <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-50">
+              <input
+                type="checkbox"
+                checked={seleccionados.length === NSE_NIVELES.length}
+                onChange={toggleTodos}
+                className="accent-brand-700"
+              />
+              <span className="text-sm text-gray-600 font-medium">Todos los niveles</span>
+            </label>
+            {NSE_NIVELES.map(n => (
+              <label key={n.nivel} className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors ${
+                seleccionados.includes(n.nivel) ? 'bg-brand-50' : 'hover:bg-gray-50'
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={seleccionados.includes(n.nivel)}
+                  onChange={() => toggle(n.nivel)}
+                  className="accent-brand-700"
+                />
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: n.color }} />
+                <span className="text-sm text-gray-700">{n.label}</span>
+                <span className="text-xs text-gray-400 ml-auto">≥{n.graproes_min} años</span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
       {seleccionados.length === 0 && (
         <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-          Sin filtro NSE — se analizarán todas las AGEBs del municipio.
+          Sin filtro NSE — se analizarán todas las zonas del municipio.
         </p>
       )}
 
@@ -260,16 +295,17 @@ function Step3NSE({
 
 // Paso 4
 function Step4Analisis({
-  data, onNext, onBack, scianGiros,
+  data, onNext, onBack, scianCatalogo,
 }: {
   data: WizardData
   onNext: (patch: Partial<WizardData>) => void
   onBack: () => void
-  scianGiros: ScianGiro[]
+  scianCatalogo: ScianGiro[]
 }) {
   const [marcaPropia, setMarcaPropia] = useState(data.marcaPropia)
-  const [scianGiro, setScianGiro] = useState(data.scianGiro)
+  const [scianGiros, setScianGiros] = useState<string[]>(data.scianGiros)
   const [scianSearch, setScianSearch] = useState('')
+  const [scianAbierto, setScianAbierto] = useState(false)
   const [competencia, setCompetencia] = useState<string[]>(
     data.competenciaDirecta.length ? data.competenciaDirecta : ['']
   )
@@ -285,10 +321,16 @@ function Step4Analisis({
   const removeCompetidor = (i: number) =>
     setCompetencia(prev => prev.filter((_, idx) => idx !== i))
 
+  const toggleScian = (codigo: string) => {
+    setScianGiros(prev =>
+      prev.includes(codigo) ? prev.filter(c => c !== codigo) : [...prev, codigo]
+    )
+  }
+
   const handleNext = () => {
     onNext({
       marcaPropia: marcaPropia.trim(),
-      scianGiro: scianGiro.trim(),
+      scianGiros,
       competenciaDirecta: competencia.map(c => c.trim()).filter(Boolean),
       incluirSucursales,
       incluirHubs,
@@ -343,37 +385,85 @@ function Step4Analisis({
         </button>
       </div>
 
-      {/* Giro SCIAN */}
+      {/* Giro SCIAN multi-select */}
       <div className="space-y-1.5">
-        <p className="text-xs text-gray-500 font-medium">Giro SCIAN (para competencia indirecta)</p>
-        <input
-          type="text"
-          placeholder="Buscar giro... (ej: farmacia, restaurante)"
-          value={scianSearch}
-          onChange={e => setScianSearch(e.target.value)}
-          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
-        />
-        <select
-          value={scianGiro}
-          onChange={e => setScianGiro(e.target.value)}
-          size={5}
-          className="w-full border border-gray-200 rounded-lg px-3 py-1 text-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none"
-        >
-          <option value="">— Sin filtro SCIAN —</option>
-          {scianGiros
-            .filter(s => {
-              const q = scianSearch.toLowerCase()
-              return !q || s.descripcion.toLowerCase().includes(q) || s.codigo.includes(q)
-            })
-            .map(s => (
-              <option key={s.codigo} value={s.codigo}>{s.codigo} — {s.descripcion}</option>
-            ))
-          }
-        </select>
-        {scianGiro && (
-          <p className="text-xs text-brand-700 font-medium">
-            Seleccionado: {scianGiro} — {scianGiros.find(s => s.codigo === scianGiro)?.descripcion}
-          </p>
+        <p className="text-xs text-gray-500 font-medium">Giro(s) SCIAN (competencia indirecta)</p>
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          {/* Cabecera colapsable */}
+          <button
+            type="button"
+            onClick={() => setScianAbierto(o => !o)}
+            className="w-full flex items-center justify-between px-3 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors text-left"
+          >
+            <span className="text-sm text-gray-700 truncate">
+              {scianGiros.length === 0
+                ? 'Sin filtro SCIAN'
+                : `${scianGiros.length} giro${scianGiros.length > 1 ? 's' : ''} seleccionado${scianGiros.length > 1 ? 's' : ''}`}
+            </span>
+            <span className="text-gray-400 ml-2 flex-shrink-0">{scianAbierto ? '▲' : '▼'}</span>
+          </button>
+
+          {scianAbierto && (
+            <div className="border-t border-gray-100">
+              {/* Buscador */}
+              <div className="px-3 py-2 border-b border-gray-100">
+                <input
+                  type="text"
+                  placeholder="Buscar giro... (ej: farmacia, restaurante)"
+                  value={scianSearch}
+                  onChange={e => setScianSearch(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
+                />
+              </div>
+              {/* Lista con scroll */}
+              <div className="max-h-48 overflow-y-auto divide-y divide-gray-50">
+                {scianGiros.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setScianGiros([])}
+                    className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
+                  >
+                    Limpiar selección ({scianGiros.length})
+                  </button>
+                )}
+                {scianCatalogo
+                  .filter(s => {
+                    const q = scianSearch.toLowerCase()
+                    return !q || s.descripcion.toLowerCase().includes(q) || s.codigo.includes(q)
+                  })
+                  .map(s => (
+                    <label key={s.codigo} className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${
+                      scianGiros.includes(s.codigo) ? 'bg-brand-50' : 'hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={scianGiros.includes(s.codigo)}
+                        onChange={() => toggleScian(s.codigo)}
+                        className="accent-brand-700 flex-shrink-0"
+                      />
+                      <span className="text-xs text-gray-700 leading-tight">
+                        <span className="font-mono text-gray-400">{s.codigo}</span> — {s.descripcion}
+                      </span>
+                    </label>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Chips de seleccionados */}
+        {scianGiros.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {scianGiros.map(codigo => {
+              const desc = scianCatalogo.find(s => s.codigo === codigo)?.descripcion
+              return (
+                <span key={codigo} className="inline-flex items-center gap-1 bg-brand-100 text-brand-800 text-xs rounded-full px-2 py-0.5">
+                  <span title={desc}>{codigo}</span>
+                  <button type="button" onClick={() => toggleScian(codigo)} className="hover:text-red-500">✕</button>
+                </span>
+              )
+            })}
+          </div>
         )}
       </div>
 
@@ -591,7 +681,7 @@ export function WizardAnalisis({ onClose, onResultado }: Props) {
       graproes_min:        min,
       graproes_max:        max,
       marca_propia:        d.marcaPropia || undefined,
-      scian_giro:          d.scianGiro || undefined,
+      scian_giros:         d.scianGiros.length > 0 ? d.scianGiros : undefined,
       competencia_directa: d.competenciaDirecta.filter(Boolean),
       incluir_sucursales:  d.incluirSucursales,
       incluir_hubs:        d.incluirHubs,
@@ -729,7 +819,7 @@ export function WizardAnalisis({ onClose, onResultado }: Props) {
             data={data}
             onNext={u => siguientePasoConData(u)}
             onBack={() => irPaso(3)}
-            scianGiros={scianGiros}
+            scianCatalogo={scianGiros}
           />
         )}
         {paso === 5 && (

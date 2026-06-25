@@ -34,7 +34,7 @@ class AnalisisCompetenciaRequest(BaseModel):
 
     # Marca propia
     marca_propia: Optional[str] = Field(None, description="Nombre de tu marca/cadena propia")
-    scian_giro: Optional[str] = Field(None, description="Prefijo SCIAN para competencia indirecta")
+    scian_giros: Optional[List[str]] = Field(None, description="Uno o más códigos SCIAN para competencia indirecta")
 
     # Competencia directa
     competencia_directa: List[str] = Field(default_factory=list, description="Nombres de competidores directos")
@@ -86,6 +86,7 @@ async def analisis_competencia(
 
     # 2. Construir capas (marca propia + competidores directos)
     capas: List[Dict[str, Any]] = []
+    scian_giros = request.scian_giros or []
     if request.marca_propia and request.incluir_sucursales:
         capas.append({
             "keyword":      request.marca_propia,
@@ -93,7 +94,7 @@ async def analisis_competencia(
             "color":        "green",
             "icon":         "star",
             "estado":       request.clave_estado,
-            "scian_prefix": request.scian_giro,
+            "scian_prefixes": scian_giros,
         })
     for i, comp in enumerate(request.competencia_directa):
         capas.append({
@@ -102,7 +103,7 @@ async def analisis_competencia(
             "color":        _COLORES_COMPETENCIA[i % len(_COLORES_COMPETENCIA)],
             "icon":         "circle",
             "estado":       request.clave_estado,
-            "scian_prefix": request.scian_giro,
+            "scian_prefixes": scian_giros,
         })
 
     # 3. ETL DENUE para cada capa
@@ -112,7 +113,7 @@ async def analisis_competencia(
     # 4. Obtener puntos por capa (marca + directa)
     capas_con_puntos = []
     for capa in capas:
-        puntos = query_puntos_capa(db, polygon, capa["keyword"], capa.get("scian_prefix"))
+        puntos = query_puntos_capa(db, polygon, capa["keyword"], capa.get("scian_prefixes"))
         capas_con_puntos.append({**capa, "puntos": puntos})
 
     # 5. Zonas geográficas (AGEBs o manzanas) con filtro NSE opcional
@@ -155,10 +156,10 @@ async def analisis_competencia(
 
     # 7. Competencia indirecta (mismo SCIAN, excluye marcas listadas)
     puntos_indirecta: List[Dict] = []
-    if request.scian_giro:
+    if scian_giros:
         exclude = [k for k in [request.marca_propia] + list(request.competencia_directa) if k]
         try:
-            puntos_indirecta = query_puntos_indirecta(db, polygon, request.scian_giro, exclude)
+            puntos_indirecta = query_puntos_indirecta(db, polygon, scian_giros, exclude)
         except Exception:
             logger.exception("Error consultando competencia indirecta")
 

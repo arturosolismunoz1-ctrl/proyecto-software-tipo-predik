@@ -73,7 +73,7 @@ export interface WizardData {
   nseNiveles: NseNivel[]
   // Paso 4
   marcaPropia: string
-  scianGiro: string
+  scianGiros: string[]
   competenciaDirecta: string[]
   incluirSucursales: boolean
   incluirHubs: boolean

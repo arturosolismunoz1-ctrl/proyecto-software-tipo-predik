@@ -217,7 +217,7 @@ export interface AnalisisCompetenciaPayload {
   graproes_min?: number | null
   graproes_max?: number | null
   marca_propia?: string
-  scian_giro?: string
+  scian_giros?: string[]
   competencia_directa: string[]
   incluir_sucursales: boolean
   incluir_hubs: boolean
