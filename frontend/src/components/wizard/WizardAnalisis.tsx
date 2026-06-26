@@ -30,7 +30,7 @@ const WIZARD_DEFAULT: WizardData = {
 function StepHeader({ paso, label }: { paso: number; label: string }) {
   return (
     <div className="flex items-center gap-2 mb-4">
-      <span className="w-6 h-6 rounded-full bg-brand-800 text-white text-xs flex items-center justify-center font-bold flex-shrink-0">
+      <span className="w-6 h-6 rounded-full bg-brand-navy text-white text-xs flex items-center justify-center font-bold flex-shrink-0">
         {paso}
       </span>
       <h3 className="text-sm font-semibold text-gray-700">{label}</h3>
@@ -60,7 +60,7 @@ function Step1Estado({
       <select
         value={clave}
         onChange={e => setClave(e.target.value)}
-        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-brand-500 outline-none"
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-brand-copper outline-none"
       >
         <option value="">— Selecciona un estado —</option>
         {estados.map(est => (
@@ -72,7 +72,7 @@ function Step1Estado({
       <button
         onClick={handleNext}
         disabled={!clave}
-        className="w-full bg-brand-800 text-white rounded-xl py-2.5 font-semibold text-sm disabled:opacity-40"
+        className="w-full bg-brand-navy text-white rounded-xl py-2.5 font-semibold text-sm disabled:opacity-40"
       >
         Continuar →
       </button>
@@ -132,7 +132,7 @@ function Step2Municipios({
         placeholder="Buscar municipio..."
         value={busqueda}
         onChange={e => setBusqueda(e.target.value)}
-        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-copper outline-none"
       />
 
       {loading ? (
@@ -152,7 +152,7 @@ function Step2Municipios({
                 type="checkbox"
                 checked={!!seleccionados.find(s => s.clave === m.clave)}
                 onChange={() => toggle(m)}
-                className="accent-brand-700"
+                className="accent-brand-navy"
               />
               <span className="text-sm text-gray-700">{m.nombre}</span>
               <span className="text-xs text-gray-400 ml-auto">{m.clave}</span>
@@ -162,7 +162,7 @@ function Step2Municipios({
       )}
 
       {seleccionados.length > 0 && (
-        <p className="text-xs text-brand-700 font-medium">
+        <p className="text-xs text-brand-navy font-medium">
           {seleccionados.length} municipio(s) seleccionado(s): {seleccionados.map(m => m.nombre).join(', ')}
         </p>
       )}
@@ -174,7 +174,7 @@ function Step2Municipios({
         <button
           onClick={() => onNext({ municipios: seleccionados })}
           disabled={seleccionados.length === 0}
-          className="flex-1 bg-brand-800 text-white rounded-xl py-2.5 font-semibold text-sm disabled:opacity-40"
+          className="flex-1 bg-brand-navy text-white rounded-xl py-2.5 font-semibold text-sm disabled:opacity-40"
         >
           Continuar →
         </button>
@@ -238,19 +238,19 @@ function Step3NSE({
                 type="checkbox"
                 checked={seleccionados.length === NSE_NIVELES.length}
                 onChange={toggleTodos}
-                className="accent-brand-700"
+                className="accent-brand-navy"
               />
               <span className="text-sm text-gray-600 font-medium">Todos los niveles</span>
             </label>
             {NSE_NIVELES.map(n => (
               <label key={n.nivel} className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors ${
-                seleccionados.includes(n.nivel) ? 'bg-brand-50' : 'hover:bg-gray-50'
+                seleccionados.includes(n.nivel) ? 'bg-brand-bg' : 'hover:bg-gray-50'
               }`}>
                 <input
                   type="checkbox"
                   checked={seleccionados.includes(n.nivel)}
                   onChange={() => toggle(n.nivel)}
-                  className="accent-brand-700"
+                  className="accent-brand-navy"
                 />
                 <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: n.color }} />
                 <span className="text-sm text-gray-700">{n.label}</span>
@@ -273,7 +273,7 @@ function Step3NSE({
         </button>
         <button
           onClick={() => onNext({ nseNiveles: seleccionados })}
-          className="flex-1 bg-brand-800 text-white rounded-xl py-2.5 font-semibold text-sm"
+          className="flex-1 bg-brand-navy text-white rounded-xl py-2.5 font-semibold text-sm"
         >
           Continuar →
         </button>
@@ -338,7 +338,7 @@ function Step4Analisis({
       {/* Marca propia */}
       <div className={`border rounded-xl p-3 space-y-2.5 transition-colors ${incluirSucursales ? 'border-green-300 bg-green-50' : 'border-gray-100'}`}>
         <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" checked={incluirSucursales} onChange={e => setIncluirSucursales(e.target.checked)} className="accent-brand-700" />
+          <input type="checkbox" checked={incluirSucursales} onChange={e => setIncluirSucursales(e.target.checked)} className="accent-brand-navy" />
           <span className="text-sm font-semibold text-gray-700">Mis sucursales</span>
         </label>
         {incluirSucursales && (
@@ -347,7 +347,7 @@ function Step4Analisis({
             placeholder="Nombre de tu marca (ej: Fix Trupper)"
             value={marcaPropia}
             onChange={e => setMarcaPropia(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-copper outline-none bg-white"
           />
         )}
       </div>
@@ -362,14 +362,14 @@ function Step4Analisis({
               placeholder={`Competidor ${i + 1} (ej: Boxito)`}
               value={c}
               onChange={e => updateCompetidor(i, e.target.value)}
-              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
+              className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-brand-copper outline-none"
             />
             {competencia.length > 1 && (
               <button onClick={() => removeCompetidor(i)} className="text-gray-300 hover:text-red-400 px-1">✕</button>
             )}
           </div>
         ))}
-        <button onClick={addCompetidor} className="text-xs text-brand-700 hover:text-brand-900 font-medium">
+        <button onClick={addCompetidor} className="text-xs text-brand-navy hover:text-brand-navy font-medium">
           + Agregar competidor
         </button>
       </div>
@@ -401,7 +401,7 @@ function Step4Analisis({
                   placeholder="Buscar giro... (ej: farmacia, restaurante)"
                   value={scianSearch}
                   onChange={e => setScianSearch(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-brand-copper outline-none"
                 />
               </div>
               {/* Lista con scroll */}
@@ -422,13 +422,13 @@ function Step4Analisis({
                   })
                   .map(s => (
                     <label key={s.codigo} className={`flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ${
-                      scianGiros.includes(s.codigo) ? 'bg-brand-50' : 'hover:bg-gray-50'
+                      scianGiros.includes(s.codigo) ? 'bg-brand-bg' : 'hover:bg-gray-50'
                     }`}>
                       <input
                         type="checkbox"
                         checked={scianGiros.includes(s.codigo)}
                         onChange={() => toggleScian(s.codigo)}
-                        className="accent-brand-700 flex-shrink-0"
+                        className="accent-brand-navy flex-shrink-0"
                       />
                       <span className="text-xs text-gray-700 leading-tight">
                         <span className="font-mono text-gray-400">{s.codigo}</span> — {s.descripcion}
@@ -446,7 +446,7 @@ function Step4Analisis({
             {scianGiros.map(codigo => {
               const desc = scianCatalogo.find(s => s.codigo === codigo)?.descripcion
               return (
-                <span key={codigo} className="inline-flex items-center gap-1 bg-brand-100 text-brand-800 text-xs rounded-full px-2 py-0.5">
+                <span key={codigo} className="inline-flex items-center gap-1 bg-brand-beige/40 text-brand-navy text-xs rounded-full px-2 py-0.5">
                   <span title={desc}>{codigo}</span>
                   <button type="button" onClick={() => toggleScian(codigo)} className="hover:text-red-500">✕</button>
                 </span>
@@ -459,7 +459,7 @@ function Step4Analisis({
       {/* Hubs */}
       <div className={`border rounded-xl p-3 space-y-2 transition-colors ${incluirHubs ? 'border-blue-200 bg-blue-50' : 'border-gray-100'}`}>
         <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" checked={incluirHubs} onChange={e => setIncluirHubs(e.target.checked)} className="accent-brand-700" />
+          <input type="checkbox" checked={incluirHubs} onChange={e => setIncluirHubs(e.target.checked)} className="accent-brand-navy" />
           <span className="text-sm font-semibold text-gray-700">Hubs de competencia directa</span>
         </label>
         {incluirHubs && (
@@ -469,7 +469,7 @@ function Step4Analisis({
                 key={r}
                 onClick={() => setRadioHub(r)}
                 className={`flex-1 text-xs py-1.5 rounded-lg border font-medium transition-colors ${
-                  radioHub === r ? 'bg-brand-800 text-white border-brand-800' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                  radioHub === r ? 'bg-brand-navy text-white border-brand-navy' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                 }`}
               >
                 {r}m
@@ -481,7 +481,7 @@ function Step4Analisis({
 
       {/* Zonas blancas */}
       <label className={`flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer transition-colors ${incluirZonasBlancas ? 'border-amber-300 bg-amber-50' : 'border-gray-100'}`}>
-        <input type="checkbox" checked={incluirZonasBlancas} onChange={e => setIncluirZonasBlancas(e.target.checked)} className="accent-brand-700 mt-0.5" />
+        <input type="checkbox" checked={incluirZonasBlancas} onChange={e => setIncluirZonasBlancas(e.target.checked)} className="accent-brand-navy mt-0.5" />
         <div>
           <p className="text-sm font-semibold text-gray-700">Zonas blancas de oportunidad</p>
           <p className="text-xs text-gray-400">AGEBs sin tu marca ni competencia directa, con perfil NSE match</p>
@@ -491,8 +491,8 @@ function Step4Analisis({
       {/* Nivel geográfico */}
       <div className="flex gap-2">
         {(['ageb', 'manzana'] as const).map(n => (
-          <label key={n} className={`flex-1 flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${nivelGeografico === n ? 'bg-brand-50 border-brand-400' : 'border-gray-100'}`}>
-            <input type="radio" name="nivel_wiz" value={n} checked={nivelGeografico === n} onChange={() => setNivelGeografico(n)} className="accent-brand-700" />
+          <label key={n} className={`flex-1 flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${nivelGeografico === n ? 'bg-brand-bg border-brand-copper' : 'border-gray-100'}`}>
+            <input type="radio" name="nivel_wiz" value={n} checked={nivelGeografico === n} onChange={() => setNivelGeografico(n)} className="accent-brand-navy" />
             <div>
               <p className="text-xs font-semibold text-gray-700">{n === 'ageb' ? 'AGEB' : 'Manzana'}</p>
               <p className="text-xs text-gray-400">{n === 'ageb' ? '~1 km²' : '~100 m²'}</p>
@@ -508,7 +508,7 @@ function Step4Analisis({
         <button
           onClick={handleNext}
           disabled={!canContinue}
-          className="flex-1 bg-brand-800 text-white rounded-xl py-2.5 font-semibold text-sm disabled:opacity-40"
+          className="flex-1 bg-brand-navy text-white rounded-xl py-2.5 font-semibold text-sm disabled:opacity-40"
         >
           Ejecutar análisis →
         </button>
@@ -589,7 +589,7 @@ function Step5Resultado({
           { label: 'Sucursales propias', value: resultado.capas.find(c => c.icon === 'star')?.cantidad ?? 0, color: 'text-green-700' },
           { label: 'Competencia directa', value: r.total_directa - (resultado.capas.find(c => c.icon === 'star')?.cantidad ?? 0), color: 'text-red-600' },
           { label: 'Indirecta', value: r.total_indirecta, color: 'text-amber-600' },
-          { label: 'Zonas analizadas', value: r.total_zonas, color: 'text-brand-700' },
+          { label: 'Zonas analizadas', value: r.total_zonas, color: 'text-brand-navy' },
           { label: 'Hubs detectados', value: r.total_hubs, color: 'text-blue-600' },
           { label: 'Nivel', value: r.nivel_geografico.toUpperCase(), color: 'text-gray-500' },
         ].map(kpi => (
@@ -608,7 +608,7 @@ function Step5Resultado({
       <button
         onClick={onDescargarKmz}
         disabled={kmzLoading}
-        className="w-full bg-brand-800 text-white rounded-xl py-3 font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
+        className="w-full bg-brand-navy text-white rounded-xl py-3 font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
       >
         {kmzLoading ? (
           <>
@@ -744,7 +744,7 @@ export function WizardAnalisis({ onClose, onResultado }: Props) {
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Header */}
-      <div className="bg-brand-800 px-5 py-4 flex-shrink-0">
+      <div className="bg-brand-navy px-5 py-4 flex-shrink-0">
         <div className="flex items-center justify-between mb-3">
           <div>
             <p className="text-white font-bold text-sm">Wizard — Análisis de Competencia</p>
@@ -763,8 +763,8 @@ export function WizardAnalisis({ onClose, onResultado }: Props) {
               <div key={n} className="flex items-center gap-1 min-w-0">
                 <div className={`w-5 h-5 rounded-full text-xs flex items-center justify-center font-bold flex-shrink-0 ${
                   completado ? 'bg-green-400 text-white' :
-                  activo     ? 'bg-white text-brand-800' :
-                               'bg-brand-700 text-blue-300'
+                  activo     ? 'bg-white text-brand-navy' :
+                               'bg-brand-navy/40 text-white/50'
                 }`}>
                   {completado ? '✓' : n}
                 </div>
