@@ -107,11 +107,21 @@ class DenueConnector(BaseConnector):
         """Busca establecimientos en toda una entidad federativa."""
         if not keyword:
             return []
-        url = f"{_BASE_URL}/BuscarEntidad/{keyword}/{estado}/0/{max_records}/{token}"
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            data = resp.json()
+        import logging as _log
+        _logger = _log.getLogger(__name__)
+        keyword_enc = keyword.replace(" ", "%20")
+        url = f"{_BASE_URL}/BuscarEntidad/{keyword_enc}/{estado}/0/{max_records}/{token}"
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.HTTPStatusError as exc:
+            _logger.warning("DENUE API HTTP %s para keyword='%s': %s", exc.response.status_code, keyword, exc)
+            return []
+        except (httpx.RequestError, ValueError) as exc:
+            _logger.warning("DENUE API error para keyword='%s': %s", keyword, exc)
+            return []
 
         features = []
         for item in data if isinstance(data, list) else []:

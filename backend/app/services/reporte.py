@@ -99,15 +99,23 @@ async def run_etl_capas(
     """Ejecuta ETL DENUE para cada capa. Retorna stats por capa."""
     resultados = []
     for capa in capas:
-        etl = DenueETL()
-        stats = await etl.run(
-            db,
-            estado=capa["estado"],
-            keyword=capa["keyword"],
-            max_records=max_records,
-            polygon=polygon,
-        )
-        resultados.append({"capa": capa["label"], **stats})
+        try:
+            etl = DenueETL()
+            stats = await etl.run(
+                db,
+                estado=capa["estado"],
+                keyword=capa["keyword"],
+                max_records=max_records,
+                polygon=polygon,
+            )
+            resultados.append({"capa": capa["label"], **stats})
+        except Exception as exc:
+            logger.warning("ETL DENUE falló para capa '%s': %s", capa["label"], exc)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            resultados.append({"capa": capa["label"], "extracted": 0, "loaded": 0, "aggregated": 0})
     return resultados
 
 
