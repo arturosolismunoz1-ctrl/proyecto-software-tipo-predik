@@ -13,7 +13,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/historial': 'Historial',
   '/consulta':  'Consulta unitaria',
   '/config':    'Configuración',
-  '/mapa':      'Mapa interactivo',
+  '/analisis/competencia': 'Análisis de competencia',
 }
 
 function getInitialsFromJwt(): string {

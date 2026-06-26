@@ -19,7 +19,7 @@ export default function AnalisisPage() {
 
             <div
               className="bg-white rounded-xl border-l-4 border-brand-copper p-5 cursor-pointer hover:shadow-md transition-shadow"
-              onClick={() => navigate('/mapa')}
+              onClick={() => navigate('/analisis/competencia')}
             >
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 rounded-lg bg-brand-navy flex items-center justify-center flex-shrink-0">

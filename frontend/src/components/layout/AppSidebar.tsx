@@ -27,7 +27,7 @@ const NAV_ITEMS = [
 ]
 
 const ADMIN_ITEMS = [
-  { to: '/mapa',   icon: 'ti-database', label: 'Admin ETL' },
+  { to: '/config', icon: 'ti-database', label: 'Admin ETL' },
   { to: '/config', icon: 'ti-settings', label: 'Configuración' },
 ]
 

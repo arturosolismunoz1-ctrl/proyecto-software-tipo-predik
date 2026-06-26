@@ -65,3 +65,4 @@ migrate_*.log
 *final*.zip
 *definitivo*
 *copia*.zip
+.vercel

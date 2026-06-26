@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { useAuthStore } from './store/useAuthStore'
 import LoginPage from './pages/LoginPage'
-import MapPage from './pages/MapPage'
+import WizardCompetenciaPage from './pages/WizardCompetenciaPage'
 import DashboardHomePage from './pages/DashboardHomePage'
 import AnalisisPage from './pages/AnalisisPage'
 import ProyectosPage from './pages/ProyectosPage'
@@ -26,7 +26,7 @@ export default function App() {
         <Route path="/consulta"  element={<ProtectedRoute><ConsultaPage /></ProtectedRoute>} />
         <Route path="/historial" element={<ProtectedRoute><HistorialPage /></ProtectedRoute>} />
         <Route path="/config"    element={<ProtectedRoute><ConfigPage /></ProtectedRoute>} />
-        <Route path="/mapa"      element={<ProtectedRoute><MapPage /></ProtectedRoute>} />
+        <Route path="/analisis/competencia" element={<ProtectedRoute><WizardCompetenciaPage /></ProtectedRoute>} />
         <Route path="*"          element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
