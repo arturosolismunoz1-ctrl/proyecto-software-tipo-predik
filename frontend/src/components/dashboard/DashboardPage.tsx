@@ -5,7 +5,7 @@ import {
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
 import { MapContainer, TileLayer } from 'react-leaflet'
-import { apiHistorial } from '../../api/client'
+import { apiHistorial, apiBdStatus } from '../../api/client'
 
 // ── WidgetShell ───────────────────────────────────────────────────────────────
 
@@ -248,10 +248,18 @@ interface Props {
 
 export function DashboardPage({ editMode }: Props) {
   const [analisisList, setAnalisisList] = useState<AnalisisItem[]>([])
+  const [bdInfo, setBdInfo] = useState<{ denue: number; demographics: number } | null>(null)
 
   useEffect(() => {
     apiHistorial()
       .then(data => setAnalisisList(data as AnalisisItem[]))
+      .catch(() => { /* silent */ })
+    apiBdStatus()
+      .then((data: { tablas: { tabla: string; registros: number }[] }) => {
+        const denue = data.tablas.find(t => t.tabla.includes('denue'))?.registros ?? 0
+        const demo  = data.tablas.find(t => t.tabla.includes('demographics'))?.registros ?? 0
+        setBdInfo({ denue, demographics: demo })
+      })
       .catch(() => { /* silent */ })
   }, [])
 
@@ -291,11 +299,6 @@ export function DashboardPage({ editMode }: Props) {
       valor: analisisList.length,
       subtexto: ultimoAnalisis ? `último: ${formatFecha(ultimoAnalisis.created_at)}` : 'sin registros',
     },
-    {
-      label: 'Base de datos',
-      valor: '4 est.',
-      subtexto: 'CDMX · Yuc · Cam · QRoo',
-    },
   ]
 
   return (
@@ -303,6 +306,25 @@ export function DashboardPage({ editMode }: Props) {
       {/* KPI fijos */}
       <div className="grid grid-cols-4 gap-3 flex-shrink-0">
         {kpis.map(k => <KpiCard key={k.label} {...k} />)}
+        {/* BD status card */}
+        <div className="bg-white rounded-lg p-4 border-l-4 border-brand-copper">
+          <p className="text-xs text-brand-black/60 uppercase tracking-wide mb-2">Base de datos</p>
+          {bdInfo ? (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${bdInfo.denue >= 500 ? 'bg-green-500' : bdInfo.denue > 0 ? 'bg-yellow-500' : 'bg-red-400'}`} />
+                <span className="text-sm font-semibold text-brand-navy">DENUE: {bdInfo.denue.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${bdInfo.demographics >= 500 ? 'bg-green-500' : bdInfo.demographics > 0 ? 'bg-yellow-500' : 'bg-red-400'}`} />
+                <span className="text-sm font-semibold text-brand-navy">Censo: {bdInfo.demographics.toLocaleString()}</span>
+              </div>
+              <p className="text-xs text-brand-black/40 mt-1">CDMX · Yuc · Cam · QRoo</p>
+            </div>
+          ) : (
+            <p className="text-brand-black/30 text-sm">—</p>
+          )}
+        </div>
       </div>
 
       {/* Widget grid — CSS puro, sin dependencias problemáticas */}
