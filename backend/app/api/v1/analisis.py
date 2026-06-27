@@ -50,7 +50,7 @@ class AnalisisCompetenciaRequest(BaseModel):
     radio_hub_metros: int = Field(default=150, ge=50, le=500)
     nivel_geografico: Literal["ageb", "manzana"] = "ageb"
     formato_salida: Literal["kmz", "geojson"] = "kmz"
-    max_records: int = Field(default=2500, ge=1, le=2500)
+    max_records: int = Field(default=300, ge=1, le=2500)
 
 
 @router.post(

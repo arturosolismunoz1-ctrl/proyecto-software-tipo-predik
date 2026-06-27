@@ -675,6 +675,7 @@ export function WizardAnalisis({ onClose, onResultado }: Props) {
       incluir_zonas_blancas: d.incluirZonasBlancas,
       radio_hub_metros:    d.radioHub,
       nivel_geografico:    d.nivelGeografico,
+      max_records:         300,
     }
   }
 
@@ -684,19 +685,13 @@ export function WizardAnalisis({ onClose, onResultado }: Props) {
     setError(null)
     setPaso(5)
     try {
-      // Corre GeoJSON y KMZ en paralelo — la espera es la misma
-      const [res, kmz] = await Promise.all([
-        apiAnalisisCompetenciaPreview(buildPayload(d)),
-        apiAnalisisCompetenciaKmz(buildPayload(d)).catch(() => null),
-      ])
+      const res = await apiAnalisisCompetenciaPreview(buildPayload(d))
       setResultado(res)
       onResultado(res)
-      if (kmz) setKmzBlob(kmz)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error desconocido')
     } finally {
       setLoading(false)
-      setKmzLoading(false)
     }
   }
 

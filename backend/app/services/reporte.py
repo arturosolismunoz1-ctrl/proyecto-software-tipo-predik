@@ -11,6 +11,7 @@ Dado un poligono + capas de busqueda, el servicio:
 Soporta cualquier combinacion: papelerias, restaurantes, farmacias,
 competencia entre cadenas, etc.
 """
+import asyncio
 import io
 import json
 import logging
@@ -96,26 +97,75 @@ async def run_etl_capas(
     polygon: Dict[str, Any],
     max_records: int,
 ) -> List[Dict[str, int]]:
-    """Ejecuta ETL DENUE para cada capa. Retorna stats por capa."""
-    resultados = []
+    """Ejecuta ETL DENUE para cada capa.
+
+    Optimizaciones:
+    - Si el keyword ya tiene registros en BD, omite la llamada a INEGI (caché).
+    - Las capas sin datos en BD se extraen en paralelo (asyncio.gather).
+    - Los inserts a BD se hacen de forma secuencial (Session no es thread-safe).
+    """
+    resultados: List[Dict[str, int]] = []
+    capas_a_extraer: List[Dict[str, Any]] = []
+
+    # Paso 1: verificar caché en BD
     for capa in capas:
+        kw = capa["keyword"]
         try:
-            etl = DenueETL()
-            stats = await etl.run(
-                db,
+            count = db.execute(
+                select(func.count()).select_from(DenueEstablishment).where(
+                    DenueEstablishment.nombre.ilike(f"%{kw}%")
+                )
+            ).scalar() or 0
+        except Exception:
+            count = 0
+        if count > 0:
+            logger.info("ETL DENUE '%s': %d registros en BD, omitiendo INEGI", kw, count)
+            resultados.append({"capa": capa["label"], "extracted": count, "loaded": 0, "aggregated": 0})
+        else:
+            capas_a_extraer.append(capa)
+
+    if not capas_a_extraer:
+        return resultados
+
+    # Paso 2: extraer capas faltantes en paralelo
+    from app.connectors.inegi.denue import DenueConnector
+
+    async def _extract_one(capa: Dict[str, Any]):
+        connector = DenueConnector()
+        try:
+            features = await connector.fetch(
+                polygon=polygon,
                 estado=capa["estado"],
                 keyword=capa["keyword"],
                 max_records=max_records,
-                polygon=polygon,
             )
-            resultados.append({"capa": capa["label"], **stats})
+            return capa, features, None
         except Exception as exc:
-            logger.warning("ETL DENUE falló para capa '%s': %s", capa["label"], exc)
+            return capa, [], exc
+
+    extractions = await asyncio.gather(*[_extract_one(c) for c in capas_a_extraer])
+
+    # Paso 3: cargar a BD de forma secuencial
+    for capa, features, err in extractions:
+        if err:
+            logger.warning("ETL DENUE extracción falló para capa '%s': %s", capa["label"], err)
+            resultados.append({"capa": capa["label"], "extracted": 0, "loaded": 0, "aggregated": 0})
+            continue
+        if not features:
+            resultados.append({"capa": capa["label"], "extracted": 0, "loaded": 0, "aggregated": 0})
+            continue
+        try:
+            etl = DenueETL()
+            loaded = etl.load_raw(features, db)
+            resultados.append({"capa": capa["label"], "extracted": len(features), "loaded": loaded, "aggregated": 0})
+        except Exception as exc:
+            logger.warning("ETL DENUE carga falló para capa '%s': %s", capa["label"], exc)
             try:
                 db.rollback()
             except Exception:
                 pass
-            resultados.append({"capa": capa["label"], "extracted": 0, "loaded": 0, "aggregated": 0})
+            resultados.append({"capa": capa["label"], "extracted": len(features), "loaded": 0, "aggregated": 0})
+
     return resultados
 
 
