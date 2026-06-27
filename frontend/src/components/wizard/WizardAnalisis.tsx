@@ -137,7 +137,7 @@ function Step2Municipios({
 
       {loading ? (
         <div className="flex justify-center py-4">
-          <span className="w-6 h-6 border-2 border-brand-700 border-t-transparent rounded-full animate-spin" />
+          <span className="w-6 h-6 border-2 border-brand-copper border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
         <div className="max-h-56 overflow-y-auto border border-gray-100 rounded-lg divide-y divide-gray-50">
@@ -553,7 +553,7 @@ function Step5Resultado({
         <div className="space-y-2.5">
           {PROGRESO_PASOS.map((paso, i) => (
             <div key={i} className="flex items-center gap-2.5 text-sm text-gray-500">
-              <span className="w-4 h-4 border-2 border-brand-700 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+              <span className="w-4 h-4 border-2 border-brand-copper border-t-transparent rounded-full animate-spin flex-shrink-0" />
               {paso}
             </div>
           ))}
